@@ -1,0 +1,13 @@
+[Unit]
+Description=Renew TLS certificates for the xiaoruru Docker stack
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+ConditionPathExists=/srv/xiaoruru-stack/compose.yaml
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/xiaoruru-stack
+ExecStart=/srv/xiaoruru-stack/scripts/renew-certificate.sh
+
+[Install]
+WantedBy=multi-user.target
