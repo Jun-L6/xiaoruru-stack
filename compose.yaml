@@ -1,4 +1,4 @@
-name: xiaoruru
+name: ${COMPOSE_PROJECT_NAME:-xiaoruru}
 
 services:
   xui:
@@ -30,7 +30,7 @@ services:
       - "${XRAY_PORT}:${XRAY_PORT}/tcp"
       - "${XRAY_PORT}:${XRAY_PORT}/udp"
     networks:
-      - edge
+      - gateway
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${XUI_PANEL_PORT}${XUI_WEB_BASE_PATH} >/dev/null || exit 1"]
       interval: 15s
@@ -43,46 +43,37 @@ services:
         max-size: 20m
         max-file: "5"
 
-  nginx:
-    image: ${NGINX_IMAGE}
-    container_name: xiaoruru-nginx
+  nginx-ui:
+    image: ${NGINX_UI_IMAGE}
+    container_name: xiaoruru-nginx-ui
+    hostname: nginx-ui
     restart: unless-stopped
-    init: true
-    depends_on:
-      xui:
-        condition: service_healthy
     environment:
-      DOMAIN: ${DOMAIN}
-      ROOT_DOMAIN: ${ROOT_DOMAIN}
-      XUI_PANEL_PORT: ${XUI_PANEL_PORT}
-      XUI_SUB_PORT: ${XUI_SUB_PORT}
-      NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/templates
-      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx/conf.d
+      TZ: ${TZ}
+      NGINX_UI_NODE_SKIP_INSTALLATION: "true"
+      NGINX_UI_PREDEFINED_USER_NAME: ${XUI_ADMIN_USERNAME}
+      NGINX_UI_PREDEFINED_USER_PASSWORD: ${XUI_ADMIN_PASSWORD}
+      NGINX_UI_SERVER_RUN_MODE: release
+      NGINX_UI_CERT_EMAIL: ${LE_EMAIL}
+      NGINX_UI_LOGROTATE_ENABLED: "true"
+      NGINX_UI_LOGROTATE_INTERVAL: "1440"
     volumes:
-      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./config/nginx/templates:/etc/nginx/templates:ro
-      - ./data/nginx-runtime:/etc/nginx/conf.d
-      - ./data/letsencrypt:/etc/letsencrypt:ro
-      - ./data/certbot-webroot:/var/www/certbot:ro
+      - ./data/nginx:/etc/nginx
+      - ./data/nginx-ui:/etc/nginx-ui
+      - ./data/letsencrypt:/etc/letsencrypt
+      - ./data/certbot-webroot:/var/www/certbot
       - ./data/logs/nginx:/var/log/nginx
     ports:
       - "${HTTP_PORT}:80/tcp"
       - "${HTTPS_PORT}:443/tcp"
     networks:
-      - edge
-    read_only: true
-    tmpfs:
-      - /var/cache/nginx
-      - /var/run
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
+      - gateway
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9000/healthz || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 20
+      start_period: 30s
     logging:
       driver: local
       options:
@@ -95,11 +86,12 @@ services:
     restart: unless-stopped
     init: true
     depends_on:
-      nginx:
+      nginx-ui:
         condition: service_healthy
     entrypoint: ["/bin/sh", "/opt/xiaoruru/gost-entrypoint.sh"]
     environment:
-      DOMAIN: ${DOMAIN}
+      GOST_DOMAIN: ${GOST_DOMAIN}
+      CERT_NAME: ${CERT_NAME}
       GOST_USERNAME: ${GOST_USERNAME}
       GOST_PASSWORD: ${GOST_PASSWORD}
       GOST_PORT: ${GOST_PORT}
@@ -111,7 +103,7 @@ services:
     ports:
       - "${GOST_PORT}:${GOST_PORT}/tcp"
     networks:
-      - edge
+      - gateway
     read_only: true
     tmpfs:
       - /run
@@ -136,7 +128,7 @@ services:
       - ./data/letsencrypt:/etc/letsencrypt
       - ./data/certbot-webroot:/var/www/certbot
     networks:
-      - edge
+      - gateway
 
   panel-init:
     image: ${PANEL_INIT_IMAGE}
@@ -146,7 +138,8 @@ services:
       xui:
         condition: service_healthy
     environment:
-      DOMAIN: ${DOMAIN}
+      XUI_DOMAIN: ${XUI_DOMAIN}
+      CERT_NAME: ${CERT_NAME}
       DOCKER_SUBNET: ${DOCKER_SUBNET}
       XUI_PANEL_PORT: ${XUI_PANEL_PORT}
       XUI_SUB_PORT: ${XUI_SUB_PORT}
@@ -157,13 +150,14 @@ services:
       PRIMARY_CLIENT_EMAIL: ${PRIMARY_CLIENT_EMAIL}
       REALITY_MIN_CLIENT_VER: ${REALITY_MIN_CLIENT_VER}
       REALITY_TARGET_CANDIDATES: ${REALITY_TARGET_CANDIDATES}
+      TZ: ${TZ}
       PYTHONDONTWRITEBYTECODE: "1"
     command: ["python3", "/opt/xiaoruru/init-panel.py"]
     volumes:
       - ./scripts/init-panel.py:/opt/xiaoruru/init-panel.py:ro
       - ./data/bootstrap-output:/output
     networks:
-      - edge
+      - gateway
     read_only: true
     tmpfs:
       - /tmp
@@ -173,9 +167,6 @@ services:
       - no-new-privileges:true
 
 networks:
-  edge:
-    name: xiaoruru-edge
-    driver: bridge
-    ipam:
-      config:
-        - subnet: ${DOCKER_SUBNET}
+  gateway:
+    external: true
+    name: ${GATEWAY_NETWORK}

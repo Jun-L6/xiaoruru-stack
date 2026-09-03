@@ -10,13 +10,17 @@ require_value() {
     fi
 }
 
-require_value DOMAIN
+require_value GOST_DOMAIN
+require_value CERT_NAME
 require_value GOST_USERNAME
 require_value GOST_PASSWORD
 require_value GOST_PORT
 
-case "$DOMAIN" in
-    *[!A-Za-z0-9.-]*) echo "DOMAIN contains unsupported characters" >&2; exit 1 ;;
+case "$GOST_DOMAIN" in
+    *[!A-Za-z0-9.-]*) echo "GOST_DOMAIN contains unsupported characters" >&2; exit 1 ;;
+esac
+case "$CERT_NAME" in
+    *[!A-Za-z0-9._-]*) echo "CERT_NAME contains unsupported characters" >&2; exit 1 ;;
 esac
 case "$GOST_USERNAME" in
     *[!A-Za-z0-9_-]*) echo "GOST_USERNAME contains unsupported characters" >&2; exit 1 ;;
@@ -28,23 +32,23 @@ case "$GOST_PORT" in
     ''|*[!0-9]*) echo "GOST_PORT must be numeric" >&2; exit 1 ;;
 esac
 
-cert="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
-key="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+cert="/etc/letsencrypt/live/$CERT_NAME/fullchain.pem"
+key="/etc/letsencrypt/live/$CERT_NAME/privkey.pem"
 
 attempt=0
 while [ ! -s "$cert" ] || [ ! -s "$key" ]; do
     attempt=$((attempt + 1))
     if [ "$attempt" -gt 120 ]; then
-        echo "TLS certificate was not found for $DOMAIN" >&2
+        echo "TLS certificate was not found for $GOST_DOMAIN" >&2
         exit 1
     fi
-    echo "Waiting for the TLS certificate for $DOMAIN..."
+    echo "Waiting for the TLS certificate for $GOST_DOMAIN..."
     sleep 5
 done
 
 mkdir -p /run/gost
 sed \
-    -e "s|__DOMAIN__|$DOMAIN|g" \
+    -e "s|__CERT_NAME__|$CERT_NAME|g" \
     -e "s|__GOST_USERNAME__|$GOST_USERNAME|g" \
     -e "s|__GOST_PASSWORD__|$GOST_PASSWORD|g" \
     -e "s|__GOST_PORT__|$GOST_PORT|g" \

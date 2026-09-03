@@ -23,7 +23,8 @@ def env(name: str, default: str | None = None) -> str:
     return value
 
 
-DOMAIN = env("DOMAIN")
+XUI_DOMAIN = env("XUI_DOMAIN")
+CERT_NAME = env("CERT_NAME")
 PANEL_PORT = int(env("XUI_PANEL_PORT"))
 SUB_PORT = int(env("XUI_SUB_PORT"))
 XRAY_PORT = int(env("XRAY_PORT"))
@@ -57,7 +58,7 @@ class PanelAPI:
         require_success: bool = True,
     ) -> dict:
         url = urllib.parse.urljoin(BASE_URL, path.lstrip("/"))
-        headers = {"Accept": "application/json", "Host": DOMAIN}
+        headers = {"Accept": "application/json", "Host": XUI_DOMAIN}
         data = None
         if payload is not None:
             data = json.dumps(payload, separators=(",", ":")).encode()
@@ -128,14 +129,14 @@ def configure_settings(api: PanelAPI) -> None:
             "subListen": "0.0.0.0",
             "subPort": SUB_PORT,
             "subPath": "/sub/",
-            "subDomain": DOMAIN,
+            "subDomain": XUI_DOMAIN,
             "subCertFile": "",
             "subKeyFile": "",
-            "subURI": f"https://{DOMAIN}/sub/",
+            "subURI": f"https://{XUI_DOMAIN}/sub/",
             "subJsonPath": "/json/",
-            "subJsonURI": f"https://{DOMAIN}/json/",
+            "subJsonURI": f"https://{XUI_DOMAIN}/json/",
             "subClashPath": "/clash/",
-            "subClashURI": f"https://{DOMAIN}/clash/",
+            "subClashURI": f"https://{XUI_DOMAIN}/clash/",
         }
     )
     api.request("POST", "panel/api/setting/update", payload=settings)
@@ -202,7 +203,7 @@ def create_reality(api: PanelAPI) -> dict:
         "protocol": "vless",
         "tag": "inbound-vless-reality-8443",
         "shareAddrStrategy": "custom",
-        "shareAddr": DOMAIN,
+        "shareAddr": XUI_DOMAIN,
         "subSortIndex": 1,
         "disableFlow": False,
         "settings": {"clients": [], "decryption": "none", "encryption": "none", "fallbacks": []},
@@ -256,7 +257,7 @@ def create_hysteria(api: PanelAPI) -> dict:
         print(f"Inbound already exists: {remark}")
         return existing
 
-    cert_dir = f"/etc/letsencrypt/live/{DOMAIN}"
+    cert_dir = f"/etc/letsencrypt/live/{CERT_NAME}"
     payload = {
         "up": 0,
         "down": 0,
@@ -272,7 +273,7 @@ def create_hysteria(api: PanelAPI) -> dict:
         "protocol": "hysteria",
         "tag": "inbound-hysteria2-8443",
         "shareAddrStrategy": "custom",
-        "shareAddr": DOMAIN,
+        "shareAddr": XUI_DOMAIN,
         "subSortIndex": 2,
         "disableFlow": False,
         "settings": {"version": 2, "clients": []},
@@ -281,7 +282,7 @@ def create_hysteria(api: PanelAPI) -> dict:
             "hysteriaSettings": {"version": 2, "udpIdleTimeout": 60},
             "security": "tls",
             "tlsSettings": {
-                "serverName": DOMAIN,
+                "serverName": XUI_DOMAIN,
                 "minVersion": "1.2",
                 "maxVersion": "1.3",
                 "cipherSuites": "",
@@ -388,12 +389,12 @@ def write_access_file(api: PanelAPI, client: dict, reality: dict, hysteria: dict
     if not isinstance(sub_id, str) or not sub_id:
         raise RuntimeError("primary client has no subscription id")
     output = {
-        "panel": f"https://{DOMAIN}/",
+        "panel": f"https://{XUI_DOMAIN}/",
         "client": CLIENT_EMAIL,
         "subscriptions": {
-            "base": f"https://{DOMAIN}/sub/{sub_id}",
-            "json": f"https://{DOMAIN}/json/{sub_id}",
-            "clash": f"https://{DOMAIN}/clash/{sub_id}",
+            "base": f"https://{XUI_DOMAIN}/sub/{sub_id}",
+            "json": f"https://{XUI_DOMAIN}/json/{sub_id}",
+            "clash": f"https://{XUI_DOMAIN}/clash/{sub_id}",
         },
         "inbounds": {
             "vlessReality": {"id": reality["id"], "port": XRAY_PORT, "network": "tcp"},

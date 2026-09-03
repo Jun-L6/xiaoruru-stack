@@ -1,0 +1,19 @@
+services:
+  cpa-manager-plus:
+    ports: !reset []
+    expose:
+      - "18317"
+    networks:
+      - xiaoruru-gateway
+
+  cli-proxy-api:
+    ports: !reset []
+    expose:
+      - "8317"
+    networks:
+      - xiaoruru-gateway
+
+networks:
+  xiaoruru-gateway:
+    external: true
+    name: xiaoruru-gateway

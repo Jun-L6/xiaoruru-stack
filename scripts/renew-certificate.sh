@@ -14,10 +14,9 @@ set -a
 source .env
 set +a
 
-certificate="data/letsencrypt/live/${DOMAIN:?DOMAIN is required}/fullchain.pem"
+certificate="data/letsencrypt/live/${CERT_NAME:?CERT_NAME is required}/fullchain.pem"
 if [[ ! -s "$certificate" ]]; then
     echo "Certificate not found: $project_dir/$certificate" >&2
-    echo "Run ./scripts/bootstrap.sh before enabling automatic renewal." >&2
     exit 1
 fi
 
@@ -33,6 +32,7 @@ before_digest="$(certificate_digest)"
 
 docker compose --profile ops run --rm certbot \
     renew \
+    --cert-name "$CERT_NAME" \
     --webroot \
     --webroot-path /var/www/certbot \
     --quiet
@@ -40,10 +40,10 @@ docker compose --profile ops run --rm certbot \
 after_digest="$(certificate_digest)"
 
 if [[ "$before_digest" != "$after_digest" ]]; then
-    # Nginx and GOST load certificates at process start. Xray also needs a
-    # restart for TLS-based inbounds such as Hysteria2 to pick up a renewal.
-    docker compose restart nginx gost xui
-    echo "Certificate renewed; nginx, gost, and xui were restarted."
+    docker compose exec -T nginx-ui nginx -t
+    docker compose exec -T nginx-ui nginx -s reload
+    docker compose restart gost xui
+    echo "Certificate renewed; Nginx was reloaded and TLS proxy services were restarted."
 else
-    echo "Certificate is not due for renewal; no services were restarted."
+    echo "Certificate is not due for renewal."
 fi

@@ -1,4 +1,0 @@
-services:
-  nginx:
-    volumes:
-      - ./config/nginx/templates-bootstrap:/etc/nginx/templates:ro

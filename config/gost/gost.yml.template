@@ -9,5 +9,5 @@ services:
     listener:
       type: tls
       tls:
-        certFile: /etc/letsencrypt/live/__DOMAIN__/fullchain.pem
-        keyFile: /etc/letsencrypt/live/__DOMAIN__/privkey.pem
+        certFile: /etc/letsencrypt/live/__CERT_NAME__/fullchain.pem
+        keyFile: /etc/letsencrypt/live/__CERT_NAME__/privkey.pem

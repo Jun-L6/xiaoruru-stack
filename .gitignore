@@ -4,9 +4,6 @@ data/**
 !data/**/
 !data/**/.gitkeep
 
-backups/**
-!backups/.gitkeep
-
 *.tar.gz
 *.sha256
 .DS_Store
