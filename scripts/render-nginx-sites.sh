@@ -51,13 +51,20 @@ nginx_dir="$project_dir/data/nginx"
 available_dir="$nginx_dir/sites-available"
 enabled_dir="$nginx_dir/sites-enabled"
 conf_dir="$nginx_dir/conf.d"
+streams_available_dir="$nginx_dir/streams-available"
+streams_enabled_dir="$nginx_dir/streams-enabled"
 
 if [[ ! -s "$nginx_dir/nginx.conf" ]]; then
     echo "Nginx UI has not initialized $nginx_dir yet" >&2
     exit 1
 fi
 
-mkdir -p "$available_dir" "$enabled_dir" "$conf_dir"
+mkdir -p \
+    "$available_dir" \
+    "$enabled_dir" \
+    "$conf_dir" \
+    "$streams_available_dir" \
+    "$streams_enabled_dir"
 install -m 0644 config/nginx-ui/common.conf "$conf_dir/nginx-ui.conf"
 
 render_template() {

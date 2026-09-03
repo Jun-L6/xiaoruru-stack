@@ -55,6 +55,7 @@ services:
       NGINX_UI_PREDEFINED_USER_PASSWORD: ${XUI_ADMIN_PASSWORD}
       NGINX_UI_SERVER_RUN_MODE: release
       NGINX_UI_CERT_EMAIL: ${LE_EMAIL}
+      NGINX_UI_IGNORE_DOCKER_SOCKET: "true"
       NGINX_UI_LOGROTATE_ENABLED: "true"
       NGINX_UI_LOGROTATE_INTERVAL: "1440"
     volumes:
@@ -69,7 +70,7 @@ services:
     networks:
       - gateway
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9000/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9000/healthz || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 20

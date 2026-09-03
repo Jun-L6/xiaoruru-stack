@@ -84,11 +84,6 @@ else
         "$GATEWAY_NETWORK" >/dev/null
 fi
 
-new_database=0
-if [[ ! -s data/x-ui/x-ui.db ]]; then
-    new_database=1
-fi
-
 certificate="data/letsencrypt/live/$CERT_NAME/fullchain.pem"
 
 echo "Starting 3x-ui and Nginx UI..."
@@ -118,17 +113,15 @@ if [[ "$status" != "healthy" ]]; then
     exit 1
 fi
 
-if [[ "$new_database" == "1" ]]; then
-    echo "Applying the 3x-ui administrator credentials..."
-    docker compose stop xui
-    docker compose run --rm --no-deps --entrypoint /app/x-ui xui \
-        setting \
-        -username "$XUI_ADMIN_USERNAME" \
-        -password "$XUI_ADMIN_PASSWORD" \
-        -webBasePath "${XUI_WEB_BASE_PATH:-/}" \
-        -listenIP "0.0.0.0"
-    docker compose start xui
-fi
+echo "Applying the 3x-ui administrator credentials..."
+docker compose stop xui
+docker compose run --rm --no-deps --entrypoint /app/x-ui xui \
+    setting \
+    -username "$XUI_ADMIN_USERNAME" \
+    -password "$XUI_ADMIN_PASSWORD" \
+    -webBasePath "${XUI_WEB_BASE_PATH:-/}" \
+    -listenIP "0.0.0.0"
+docker compose start xui
 
 if [[ ! -s "$certificate" ]]; then
     ./scripts/render-nginx-sites.sh bootstrap
