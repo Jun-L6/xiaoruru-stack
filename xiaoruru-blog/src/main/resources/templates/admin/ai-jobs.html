@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/admin :: head('AI 任务')}"></head>
+<body>
+<header th:replace="~{fragments/admin :: header}"></header>
+<main class="admin-shell">
+    <div th:replace="~{fragments/admin :: flash}"></div>
+    <div class="admin-title"><div><p class="eyebrow">ARTIFICIAL INTELLIGENCE</p><h1>AI 分类任务</h1><p>任务单线程执行，失败不会阻止文章发布。</p></div></div>
+    <div class="table-wrap"><table class="admin-table"><thead><tr><th>文章</th><th>状态</th><th>尝试</th><th>创建</th><th>错误</th><th></th></tr></thead>
+        <tbody><tr th:each="job : ${jobs}"><td><a th:href="@{/admin/articles/{id}(id=${job.article.id})}" th:text="${job.article.title}">文章</a></td><td><span class="status" th:text="${job.status}">状态</span></td><td th:text="${job.attemptCount}">0</td><td th:text="${#temporals.format(job.createdAt, 'yyyy-MM-dd HH:mm:ss')}">时间</td><td th:text="${job.errorMessage}"></td><td><form th:if="${job.status.name() == 'FAILED' || job.status.name() == 'CANCELLED'}" th:action="@{/admin/ai-jobs/{id}/retry(id=${job.id})}" method="post"><button type="submit">重试</button></form></td></tr></tbody>
+    </table><p class="empty-state" th:if="${jobs.empty}">暂无 AI 任务。</p></div>
+    <section class="panel ai-log-panel"><h2>执行日志</h2><p>仅记录模型、接口主机、耗时、结果和错误摘要，不保存 API Key 或完整文章正文。</p>
+        <div class="table-wrap"><table class="admin-table"><thead><tr><th>文章</th><th>模型 / 接口</th><th>耗时</th><th>解析</th><th>分类 / 置信度</th><th>标签或错误</th><th>时间</th></tr></thead>
+            <tbody><tr th:each="log : ${executionLogs}"><td th:text="${log.job.article.title}">文章</td><td><span th:text="${log.model}">模型</span><br><small th:text="${log.endpointIdentifier}">接口</small></td><td th:text="${log.elapsedMs + ' ms'}">0 ms</td><td><span class="status" th:text="${log.parseStatus}">状态</span></td><td th:text="${log.categoryId == null ? '-' : log.categoryId + ' / ' + #numbers.formatDecimal(log.confidence, 1, 2)}">-</td><td th:text="${log.errorMessage != null ? log.errorMessage : log.resultTags}">-</td><td th:text="${#temporals.format(log.createdAt, 'yyyy-MM-dd HH:mm:ss')}">时间</td></tr></tbody>
+        </table><p class="empty-state" th:if="${executionLogs.empty}">暂无执行日志。</p></div>
+    </section>
+</main>
+</body>
+</html>

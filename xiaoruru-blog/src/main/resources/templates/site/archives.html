@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/site :: head(${pageTitle}, '文章时间归档')}"></head>
+<body>
+<header th:replace="~{fragments/site :: header}"></header>
+<main class="page-shell narrow-page">
+    <header class="page-heading"><p class="eyebrow">A TIMELINE OF THOUGHTS</p><h1>一路写下的痕迹<span class="accent-word">。</span></h1><p>每一篇记录，都是一次向前的探索。</p></header>
+    <section class="archive-year" th:each="entry : ${archive}">
+        <h2 th:text="${entry.key}">2026</h2>
+        <ol>
+            <li th:each="article : ${entry.value}">
+                <time th:text="${#temporals.format(article.publishedAt, 'MM-dd')}">08-31</time>
+                <a th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${article.title}">标题</a>
+            </li>
+        </ol>
+    </section>
+    <p class="empty-state" th:if="${archive.empty}">还没有已发布文章。</p>
+</main>
+<footer th:replace="~{fragments/site :: footer}"></footer>
+</body>
+</html>

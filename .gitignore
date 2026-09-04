@@ -1,4 +1,8 @@
 .env
+config/rurublog/application.yml
+config/rurublog/application.yaml
+*.tar
+__pycache__/
 
 data/**
 !data/**/

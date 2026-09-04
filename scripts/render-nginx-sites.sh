@@ -5,8 +5,8 @@ project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
 
 mode="${1:-}"
-if [[ "$mode" != "bootstrap" && "$mode" != "final" ]]; then
-    echo "Usage: $0 bootstrap|final" >&2
+if [[ "$mode" != "bootstrap" && "$mode" != "final" && "$mode" != "blog" ]]; then
+    echo "Usage: $0 bootstrap|final|blog" >&2
     exit 1
 fi
 
@@ -18,6 +18,7 @@ fi
 set -a
 # shellcheck disable=SC1091
 source .env
+BLOG_DOMAIN="${BLOG_DOMAIN:-xiaoruru.beer}"
 set +a
 
 required=(XUI_DOMAIN NGINX_UI_DOMAIN CPAMP_DOMAIN CPA_API_DOMAIN GOST_DOMAIN CERT_NAME XUI_PANEL_PORT XUI_SUB_PORT)
@@ -28,7 +29,7 @@ for name in "${required[@]}"; do
     fi
 done
 
-for name in XUI_DOMAIN NGINX_UI_DOMAIN CPAMP_DOMAIN CPA_API_DOMAIN GOST_DOMAIN; do
+for name in XUI_DOMAIN NGINX_UI_DOMAIN CPAMP_DOMAIN CPA_API_DOMAIN GOST_DOMAIN BLOG_DOMAIN; do
     value="${!name}"
     if [[ ! "$value" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]; then
         echo "$name is not a valid DNS name" >&2
@@ -65,7 +66,9 @@ mkdir -p \
     "$conf_dir" \
     "$streams_available_dir" \
     "$streams_enabled_dir"
-install -m 0644 config/nginx-ui/common.conf "$conf_dir/nginx-ui.conf"
+if [[ "$mode" != "blog" || ! -e "$conf_dir/nginx-ui.conf" ]]; then
+    install -m 0644 config/nginx-ui/common.conf "$conf_dir/nginx-ui.conf"
+fi
 
 render_template() {
     local source_file="$1"
@@ -78,6 +81,7 @@ render_template() {
         -e "s|__CPAMP_DOMAIN__|$CPAMP_DOMAIN|g" \
         -e "s|__CPA_API_DOMAIN__|$CPA_API_DOMAIN|g" \
         -e "s|__GOST_DOMAIN__|$GOST_DOMAIN|g" \
+        -e "s|__BLOG_DOMAIN__|$BLOG_DOMAIN|g" \
         -e "s|__CERT_NAME__|$CERT_NAME|g" \
         -e "s|__XUI_PANEL_PORT__|$XUI_PANEL_PORT|g" \
         -e "s|__XUI_SUB_PORT__|$XUI_SUB_PORT|g" \
@@ -93,7 +97,11 @@ managed_sites=(
     20-3x-ui.conf
     30-cpa-manager-plus.conf
     40-cli-proxy-api.conf
+    50-rurublog.conf
 )
+if [[ "$mode" == "blog" ]]; then
+    managed_sites=(50-rurublog.conf)
+fi
 for site in "${managed_sites[@]}"; do
     rm -f "$enabled_dir/$site"
 done
@@ -103,9 +111,9 @@ if [[ "$mode" == "bootstrap" ]]; then
         config/nginx-ui/sites/00-bootstrap.conf.template \
         "$available_dir/00-bootstrap.conf"
     ln -s ../sites-available/00-bootstrap.conf "$enabled_dir/00-bootstrap.conf"
-else
+elif [[ "$mode" == "final" ]]; then
     rm -f "$available_dir/00-bootstrap.conf"
-    for site in 00-default 10-nginx-ui 20-3x-ui 30-cpa-manager-plus 40-cli-proxy-api; do
+    for site in 00-default 10-nginx-ui 20-3x-ui 30-cpa-manager-plus 40-cli-proxy-api 50-rurublog; do
         if [[ ! -e "$available_dir/$site.conf" ]]; then
             render_template \
                 "config/nginx-ui/sites/$site.conf.template" \
@@ -113,6 +121,11 @@ else
         fi
         ln -s "../sites-available/$site.conf" "$enabled_dir/$site.conf"
     done
+else
+    if [[ ! -e "$available_dir/50-rurublog.conf" ]]; then
+        render_template config/nginx-ui/sites/50-rurublog.conf.template "$available_dir/50-rurublog.conf"
+    fi
+    ln -s ../sites-available/50-rurublog.conf "$enabled_dir/50-rurublog.conf"
 fi
 
 docker compose exec -T nginx-ui nginx -t

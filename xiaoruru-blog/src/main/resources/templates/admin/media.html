@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/admin :: head('资源管理')}"></head>
+<body>
+<header th:replace="~{fragments/admin :: header}"></header>
+<main class="admin-shell">
+    <div th:replace="~{fragments/admin :: flash}"></div>
+    <div class="admin-title"><div><p class="eyebrow">MEDIA</p><h1>资源</h1><p>图片可直接展示，其他文件作为附件下载。</p></div></div>
+    <form th:action="@{/admin/media}" method="post" enctype="multipart/form-data" class="panel upload-form">
+        <label>选择文件<input type="file" name="file" required accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,text/markdown,application/zip"></label>
+        <button class="primary" type="submit">上传资源</button>
+    </form>
+    <div class="media-grid">
+        <article class="media-card" th:each="asset : ${media}">
+            <img th:if="${#strings.startsWith(asset.mimeType, 'image/')}" th:src="@{/media/{id}/{name}(id=${asset.id},name=${asset.originalName})}" th:alt="${asset.originalName}" loading="lazy">
+            <div class="file-placeholder" th:unless="${#strings.startsWith(asset.mimeType, 'image/')}" th:text="${asset.mimeType}">FILE</div>
+            <strong th:text="${asset.originalName}">文件</strong>
+            <small th:text="${#numbers.formatDecimal(asset.fileSize / 1024.0, 1, 1)} + ' KB'">0 KB</small>
+            <input readonly th:value="@{/media/{id}/{name}(id=${asset.id},name=${asset.originalName})}" onclick="this.select()">
+            <div class="media-references" th:if="${!references.get(asset.id).empty}"><small>被以下文章引用：</small><a th:each="article : ${references.get(asset.id)}" th:href="@{/admin/articles/{id}(id=${article.id})}" th:text="${article.title}">文章</a></div>
+            <form th:if="${references.get(asset.id).empty}" th:action="@{/admin/media/{id}/delete(id=${asset.id})}" method="post" onsubmit="return confirm('确定删除这个资源吗？')"><button class="danger" type="submit">删除</button></form>
+            <small th:if="${!references.get(asset.id).empty}">仍被引用，不能删除</small>
+        </article>
+    </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,66 @@
+name: rurublog
+
+services:
+  rurublog:
+    image: rurublog:local
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    init: true
+    user: "${RURUBLOG_UID:-10001}:${RURUBLOG_GID:-10001}"
+    ports:
+      - "${RURUBLOG_BIND_ADDRESS:-127.0.0.1}:${RURUBLOG_PORT:-8080}:8080"
+    environment:
+      BLOG_DATA_DIR: /data
+      SERVER_PORT: "8080"
+      TZ: "${TZ:-Asia/Shanghai}"
+      BLOG_PUBLIC_URL: "${BLOG_PUBLIC_URL:-http://localhost:8080}"
+      BLOG_ADMIN_SECRET_HASH: "${BLOG_ADMIN_SECRET_HASH:-}"
+      BLOG_DB_PASSWORD: "${BLOG_DB_PASSWORD:-}"
+      BLOG_COOKIE_SECURE: "${BLOG_COOKIE_SECURE:-false}"
+      BLOG_ADMIN_SESSION_TIMEOUT: "${BLOG_ADMIN_SESSION_TIMEOUT:-12h}"
+      BLOG_AI_ENABLED: "${BLOG_AI_ENABLED:-false}"
+      BLOG_AI_BASE_URL: "${BLOG_AI_BASE_URL:-https://api.openai.com}"
+      BLOG_AI_COMPLETIONS_PATH: "${BLOG_AI_COMPLETIONS_PATH:-/v1/chat/completions}"
+      BLOG_AI_API_KEY: "${BLOG_AI_API_KEY:-disabled}"
+      BLOG_AI_MODEL: "${BLOG_AI_MODEL:-gpt-4o-mini}"
+      BLOG_AI_TIMEOUT: "${BLOG_AI_TIMEOUT:-45s}"
+      BLOG_AI_AUTO_RUN: "${BLOG_AI_AUTO_RUN:-true}"
+      BLOG_AI_DELAY: "${BLOG_AI_DELAY:-10s}"
+      BLOG_AI_MIN_CONFIDENCE: "${BLOG_AI_MIN_CONFIDENCE:-0.55}"
+      BLOG_AI_REVIEW_CONFIDENCE: "${BLOG_AI_REVIEW_CONFIDENCE:-0.80}"
+      BLOG_BACKUP_ENABLED: "${BLOG_BACKUP_ENABLED:-true}"
+      BLOG_BACKUP_CRON: "${BLOG_BACKUP_CRON:-0 0 3 * * *}"
+      BLOG_BACKUP_RETENTION: "${BLOG_BACKUP_RETENTION:-7}"
+      BLOG_UPLOAD_MAX_SIZE: "${BLOG_UPLOAD_MAX_SIZE:-20MB}"
+      JAVA_TOOL_OPTIONS: "${JAVA_TOOL_OPTIONS:--Xms128m -Xmx768m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC}"
+    volumes:
+      - type: bind
+        source: ./config
+        target: /app/config
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${RURUBLOG_DATA_DIR:-./data}"
+        target: /data
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1400m
+    mem_reservation: 256m
+    cpus: "2.0"
+    pids_limit: 256
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>进入小茹茹博客管理</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/site.css}">
+    <link rel="stylesheet" th:href="@{/css/admin.css}">
+    <script th:src="@{/js/theme.js}"></script>
+</head>
+<body class="login-page">
+<a class="login-brand site-brand" th:href="@{/}"><span class="brand-mark" aria-hidden="true">r<span>.</span></span>小茹茹博客</a>
+<button type="button" class="icon-button login-theme" data-theme-toggle aria-label="切换明暗主题"><svg th:replace="~{fragments/icons :: icon('moon')}"></svg></button>
+<main class="login-layout">
+<section class="login-story"><p class="eyebrow"><span class="tiny-dot"></span> YOUR WORDS, YOUR SPACE</p><h1>每一个想法，<br>都值得被<span>记录。</span></h1><p>在这里，把灵感变成文字，<br>把经验留给未来的自己。</p><div class="login-story-note"><svg th:replace="~{fragments/icons :: icon('book')}"></svg><span>一个人，一本持续更新的技术手记。</span></div></section>
+<section class="login-card" aria-labelledby="login-title">
+    <span class="login-lock"><svg th:replace="~{fragments/icons :: icon('lock')}"></svg></span><p class="eyebrow">WELCOME BACK</p>
+    <h2 id="login-title">回到你的创作空间</h2>
+    <p class="muted">使用管理密钥，开启今天的记录。</p>
+    <p class="flash error" th:if="${param.error}">密钥错误，请重试。</p>
+    <p class="flash success" th:if="${param.logout}">已经安全退出。</p>
+    <form th:action="@{/admin/login}" method="post">
+        <input type="hidden" name="username" value="admin">
+        <label for="password">管理密钥</label>
+        <input id="password" name="password" type="password" required autofocus autocomplete="current-password">
+        <button class="primary full-width" type="submit">进入工作台 <svg th:replace="~{fragments/icons :: icon('arrow')}"></svg></button>
+    </form>
+    <p class="login-return"><a th:href="@{/}">← 返回博客</a></p>
+</section>
+</main>
+<footer class="login-footer">rurublog · 小茹茹博客</footer>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/admin :: head('文章管理')}"></head>
+<body>
+<header th:replace="~{fragments/admin :: header}"></header>
+<main class="admin-shell">
+    <div th:replace="~{fragments/admin :: flash}"></div>
+    <div class="admin-title"><div><p class="eyebrow">CONTENT</p><h1>文章</h1></div><a class="button primary" th:href="@{/admin/articles/new}">新建文章</a></div>
+    <details class="panel filter-panel" th:open="${!q.isBlank() || selectedStatus != null || selectedContentType != null || selectedCategoryId != null || selectedTagId != null || selectedClassificationStatus != null || publishedFrom != null || publishedTo != null}">
+        <summary>筛选文章</summary>
+        <form th:action="@{/admin/articles}" method="get" class="filter-grid">
+            <label>关键词<input name="q" maxlength="100" th:value="${q}" placeholder="标题或摘要"></label>
+            <label>状态<select name="status"><option value="">全部</option><option th:each="item : ${statuses}" th:value="${item}" th:text="${item}" th:selected="${item == selectedStatus}"></option></select></label>
+            <label>格式<select name="contentType"><option value="">全部</option><option th:each="item : ${contentTypes}" th:value="${item}" th:text="${item}" th:selected="${item == selectedContentType}"></option></select></label>
+            <label>分类<select name="categoryId"><option value="">全部</option><option th:each="item : ${categories}" th:value="${item.id}" th:text="${item.pathName}" th:selected="${item.id == selectedCategoryId}"></option></select></label>
+            <label>标签<select name="tagId"><option value="">全部</option><option th:each="item : ${tags}" th:value="${item.id}" th:text="${item.name}" th:selected="${item.id == selectedTagId}"></option></select></label>
+            <label>AI 状态<select name="classificationStatus"><option value="">全部</option><option th:each="item : ${classificationStatuses}" th:value="${item}" th:text="${item}" th:selected="${item == selectedClassificationStatus}"></option></select></label>
+            <label>发布开始<input name="publishedFrom" type="date" th:value="${publishedFrom}"></label>
+            <label>发布结束<input name="publishedTo" type="date" th:value="${publishedTo}"></label>
+            <div class="button-row"><button class="primary" type="submit">应用筛选</button><a class="button" th:href="@{/admin/articles}">清除</a></div>
+        </form>
+    </details>
+    <form th:action="@{/admin/articles/bulk}" method="post" id="bulk-form">
+        <div class="bulk-toolbar"><label><span class="sr-only">批量操作</span><select name="action" required><option value="">批量操作</option><option value="publish">发布</option><option value="withdraw">撤回</option><option value="trash">移入回收站</option><option value="classify">重新 AI 分类</option></select></label><button type="submit">应用</button></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th><input type="checkbox" data-select-all aria-label="全选"></th><th>标题</th><th>格式</th><th>分类</th><th>标签</th><th>状态</th><th>AI</th><th>更新</th><th></th></tr></thead>
+            <tbody><tr th:each="article : ${articles}">
+                <td><input type="checkbox" name="ids" th:value="${article.id}" aria-label="选择文章"></td>
+                <td><a th:href="@{/admin/articles/{id}(id=${article.id})}" th:text="${article.title}">标题</a></td>
+                <td th:text="${article.contentType}">MARKDOWN</td>
+                <td th:text="${article.category.pathName}">分类</td>
+                <td><span th:each="tag,iter : ${article.tags}" th:text="${tag.name + (iter.last ? '' : ', ')}">标签</span></td>
+                <td><span class="status" th:text="${article.status}">DRAFT</span></td>
+                <td><span class="status" th:text="${article.classificationStatus}">PENDING</span></td>
+                <td th:text="${#temporals.format(article.updatedAt, 'yyyy-MM-dd HH:mm')}">时间</td>
+                <td><a th:href="@{/posts/{slug}(slug=${article.slug})}" th:if="${article.status.name() == 'PUBLISHED'}" target="_blank">查看</a></td>
+            </tr></tbody>
+        </table>
+        <p class="empty-state" th:if="${articles.empty}">还没有文章。</p>
+    </div>
+    </form>
+</main>
+<script>document.querySelector('[data-select-all]')?.addEventListener('change',event=>document.querySelectorAll('input[name="ids"]').forEach(item=>item.checked=event.target.checked));document.querySelector('#bulk-form')?.addEventListener('submit',event=>{if(!document.querySelector('input[name="ids"]:checked')||!confirm('确认执行所选批量操作？'))event.preventDefault()});</script>
+</body>
+</html>

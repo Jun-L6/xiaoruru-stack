@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/admin :: head('仪表盘')}"></head>
+<body>
+<header th:replace="~{fragments/admin :: header}"></header>
+<main class="admin-shell">
+    <div th:replace="~{fragments/admin :: flash}"></div>
+    <div class="admin-title"><div><p class="eyebrow">YOUR CREATIVE SPACE</p><h1>欢迎回到创作空间<span class="accent-word">。</span></h1><p class="muted">整理思绪，开始下一篇值得分享的记录。</p></div><a class="button primary" th:href="@{/admin/articles/new}"><span aria-hidden="true">＋</span> 新建文章</a></div>
+    <section class="metric-grid">
+        <article><span>已发布</span><strong th:text="${publishedCount}">0</strong></article>
+        <article><span>草稿</span><strong th:text="${draftCount}">0</strong></article>
+        <article><span>回收站</span><strong th:text="${trashCount}">0</strong></article>
+    </section>
+    <section class="metric-grid secondary-metrics">
+        <article><span>分类 / 标签</span><strong th:text="${categoryCount + ' / ' + tagCount}">0 / 0</strong></article>
+        <article><span>AI 待复核 / 失败</span><strong th:text="${reviewCount + ' / ' + aiFailedCount}">0 / 0</strong><small th:text="${aiEnabled ? 'AI 已启用' : 'AI 未启用'}"></small></article>
+        <article><span>数据占用 / 可用空间</span><strong th:text="${dataUsage < 0 ? '-' : #numbers.formatDecimal(dataUsage / 1024.0 / 1024.0, 1, 1) + ' MB'}">-</strong><small th:text="${dataFree < 0 ? '' : '可用 ' + #numbers.formatDecimal(dataFree / 1024.0 / 1024.0 / 1024.0, 1, 1) + ' GB'}"></small></article>
+    </section>
+    <div class="notice" th:if="${lastSuccessfulBackup == null}">还没有成功备份。完成初始设置后，请立即生成并下载第一份备份。</div>
+    <div class="notice" th:if="${!aiEnabled}">AI 分类当前关闭；文章的保存、发布和展示不受影响。</div>
+    <div class="dashboard-grid">
+        <section class="panel"><h2>最近编辑</h2>
+            <ul class="clean-list"><li th:each="article : ${recentArticles}"><a th:href="@{/admin/articles/{id}(id=${article.id})}" th:text="${article.title}">标题</a><span class="status" th:text="${article.status}">DRAFT</span></li></ul>
+            <p th:if="${recentArticles.empty}">还没有文章。</p>
+        </section>
+        <section class="panel"><h2>AI 任务</h2>
+            <ul class="clean-list"><li th:each="job : ${recentJobs}"><span th:text="${job.article.title}">文章</span><span class="status" th:text="${job.status}">状态</span></li></ul>
+            <p th:if="${recentJobs.empty}">暂无任务。</p>
+        </section>
+        <section class="panel"><h2>最近备份</h2>
+            <ul class="clean-list"><li th:each="backup : ${recentBackups}"><span th:text="${backup.fileName}">备份</span><span class="status" th:text="${backup.status}">状态</span></li></ul>
+            <p th:if="${recentBackups.empty}">尚未备份。</p>
+            <p><a th:href="@{/admin/backups}">进入备份管理 →</a></p>
+        </section>
+    </div>
+</main>
+</body>
+</html>

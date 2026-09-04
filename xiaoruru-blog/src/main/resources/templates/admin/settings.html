@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/admin :: head('网站设置')}"></head>
+<body>
+<header th:replace="~{fragments/admin :: header}"></header>
+<main class="admin-shell narrow-admin">
+    <div th:replace="~{fragments/admin :: flash}"></div>
+    <div class="admin-title"><div><p class="eyebrow">SETTINGS</p><h1>网站设置</h1></div></div>
+    <form th:action="@{/admin/settings}" method="post" class="panel stack-form">
+        <label>站点名称<input name="site.name" th:value="${settings['site.name']}" maxlength="100" required></label>
+        <label>副标题<input name="site.subtitle" th:value="${settings['site.subtitle']}" maxlength="200"></label>
+        <label>作者<input name="site.author" th:value="${settings['site.author']}" maxlength="100"></label>
+        <label>页脚<input name="site.footer" th:value="${settings['site.footer']}" maxlength="300"></label>
+        <label>关于页面（Markdown）<textarea name="site.about" rows="14" th:text="${settings['site.about']}"></textarea></label>
+        <button class="primary" type="submit">保存设置</button>
+    </form>
+</main>
+</body>
+</html>

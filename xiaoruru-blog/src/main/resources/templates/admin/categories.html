@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/admin :: head('分类管理')}"></head>
+<body>
+<header th:replace="~{fragments/admin :: header}"></header>
+<main class="admin-shell">
+    <div th:replace="~{fragments/admin :: flash}"></div>
+    <div class="admin-title"><div><p class="eyebrow">TAXONOMY</p><h1>分类</h1></div></div>
+    <div class="dashboard-grid taxonomy-layout">
+        <section class="panel"><h2>现有分类</h2><p class="muted">一级分类没有子分类时可以直接用于文章；存在子分类后只能选择其叶子分类。</p>
+            <div class="taxonomy-card" th:each="category : ${categories}" th:classappend="${category.parent != null ? 'child' : 'root'}">
+                <details>
+                    <summary><strong th:text="${category.name}">名称</strong><code th:text="${category.slug}">slug</code>
+                        <span class="status" th:if="${category.systemCategory}">系统</span>
+                        <span class="status" th:if="${!category.enabled}">已停用</span>
+                        <small th:if="${category.parent != null}" th:text="${'上级：' + category.parent.name}"></small>
+                    </summary>
+                    <form th:action="@{/admin/categories/{id}(id=${category.id})}" method="post" class="stack-form compact-form">
+                        <label>名称<input name="name" required maxlength="80" th:value="${category.name}"></label>
+                        <label>Slug<input name="slug" required maxlength="100" pattern="[a-z0-9_-]+" th:value="${category.slug}" th:readonly="${category.systemCategory}"></label>
+                        <label>排序<input name="sortOrder" type="number" min="-10000" max="10000" th:value="${category.sortOrder}"></label>
+                        <label>展示说明<textarea name="description" rows="2" maxlength="500" th:text="${category.description}"></textarea></label>
+                        <label>AI 分类边界<textarea name="aiDescription" rows="3" maxlength="1000" th:text="${category.aiDescription}"></textarea></label>
+                        <label>AI 关键词<input name="aiKeywords" maxlength="1000" th:value="${category.aiKeywords}"></label>
+                        <button class="primary" type="submit">保存修改</button>
+                    </form>
+                    <div class="button-row taxonomy-actions" th:if="${!category.systemCategory}">
+                        <form th:action="@{/admin/categories/{id}/toggle(id=${category.id})}" method="post"><button type="submit" th:text="${category.enabled ? '停用' : '启用'}">停用</button></form>
+                        <form th:action="@{/admin/categories/{id}/delete(id=${category.id})}" method="post" onsubmit="return confirm('仅未被文章引用且没有子分类时才能删除。确认继续？')"><button class="danger" type="submit">删除</button></form>
+                    </div>
+                </details>
+            </div>
+        </section>
+        <section class="panel"><h2>创建分类</h2>
+            <form th:action="@{/admin/categories}" method="post" class="stack-form">
+                <label>名称<input name="name" required maxlength="80"></label>
+                <label>Slug<input name="slug" required maxlength="100" pattern="[a-z0-9_-]+"></label>
+                <label>父分类<select name="parentId"><option value="">一级分类</option><option th:each="category : ${categories}" th:if="${category.parent == null && !category.systemCategory}" th:value="${category.id}" th:text="${category.name}"></option></select></label>
+                <label>展示说明<textarea name="description" rows="2" maxlength="500"></textarea></label>
+                <label>AI 分类边界<textarea name="aiDescription" rows="3" maxlength="1000"></textarea></label>
+                <label>AI 关键词<input name="aiKeywords" maxlength="1000"></label>
+                <button class="primary" type="submit">创建分类</button>
+            </form>
+        </section>
+    </div>
+</main>
+</body>
+</html>

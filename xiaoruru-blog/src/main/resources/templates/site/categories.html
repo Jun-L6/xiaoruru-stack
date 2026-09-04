@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/site :: head(${pageTitle}, '文章分类')}"></head>
+<body>
+<header th:replace="~{fragments/site :: header}"></header>
+<main class="page-shell">
+    <header class="page-heading"><p class="eyebrow">KNOWLEDGE MAP</p><h1>知识的不同切面<span class="accent-word">。</span></h1><p>从底层原理到工程实践，沿着感兴趣的方向探索。</p></header>
+    <div class="category-grid">
+        <section class="category-group" th:each="group : ${categoryGroups}">
+            <h2><span th:text="${group.root.name}">一级分类</span> <small th:text="${categoryCounts.get(group.root.id)}">0</small></h2>
+            <p th:if="${group.root.description}" th:text="${group.root.description}"></p>
+            <ul th:if="${!group.children.empty}">
+                <li th:each="child : ${group.children}"><a th:href="@{/categories/{slug}(slug=${child.slug})}" th:text="${child.name}">子分类</a> <small th:text="${categoryCounts.get(child.id)}">0</small></li>
+            </ul>
+            <p th:if="${group.children.empty}"><a th:href="@{/categories/{slug}(slug=${group.root.slug})}">查看文章</a></p>
+        </section>
+    </div>
+</main>
+<footer th:replace="~{fragments/site :: footer}"></footer>
+</body>
+</html>

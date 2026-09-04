@@ -17,6 +17,7 @@ fi
 set -a
 # shellcheck disable=SC1091
 source .env
+BLOG_DOMAIN="${BLOG_DOMAIN:-xiaoruru.beer}"
 set +a
 
 required=(
@@ -33,7 +34,7 @@ for name in "${required[@]}"; do
     fi
 done
 
-domains=("$XUI_DOMAIN" "$NGINX_UI_DOMAIN" "$CPAMP_DOMAIN" "$CPA_API_DOMAIN" "$GOST_DOMAIN")
+domains=("$XUI_DOMAIN" "$NGINX_UI_DOMAIN" "$CPAMP_DOMAIN" "$CPA_API_DOMAIN" "$GOST_DOMAIN" "$BLOG_DOMAIN")
 for domain in "${domains[@]}"; do
     if [[ ! "$domain" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]; then
         echo "Invalid DNS name in .env: $domain" >&2
@@ -80,7 +81,19 @@ for script in scripts/*.sh; do
     bash -n "$script"
 done
 if command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import ast; ast.parse(open("scripts/init-panel.py", encoding="utf-8").read())'
+    python3 -c 'import ast, pathlib; [ast.parse(p.read_text(encoding="utf-8")) for p in pathlib.Path("scripts").glob("*.py")]'
+fi
+
+for name in BLOG_UID BLOG_GID; do
+    value="${!name:-10001}"
+    if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+        echo "$name must be a positive non-root ID" >&2
+        exit 1
+    fi
+done
+if [[ "${BLOG_BUILD_TARGET:-runtime}" != "runtime" && "${BLOG_BUILD_TARGET:-runtime}" != "prebuilt" ]]; then
+    echo "BLOG_BUILD_TARGET must be runtime or prebuilt" >&2
+    exit 1
 fi
 
 docker compose config --quiet

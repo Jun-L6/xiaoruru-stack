@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="_csrf" th:content="${_csrf.token}">
+    <meta name="_csrf_header" th:content="${_csrf.headerName}">
+    <title th:text="${title} + ' · 小茹茹博客管理'">小茹茹博客管理</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/site.css}">
+    <link rel="stylesheet" th:href="@{/css/admin.css}">
+    <link rel="stylesheet" th:href="@{/webjars/katex/0.16.44/dist/katex.min.css}">
+    <script th:src="@{/js/theme.js}"></script>
+</head>
+<body>
+<header class="admin-header" th:fragment="header">
+    <a class="admin-brand" th:href="@{/admin}"><span class="brand-mark" aria-hidden="true">r<span>.</span></span><span>rurublog<small>创作工作台</small></span></a>
+    <button class="icon-button admin-menu-toggle" type="button" data-admin-menu aria-controls="admin-navigation" aria-expanded="false" aria-label="展开后台导航"><svg th:replace="~{fragments/icons :: icon('menu')}"></svg></button>
+    <nav id="admin-navigation" aria-label="后台导航">
+        <p class="nav-label">WORKSPACE</p>
+        <a th:href="@{/admin}" th:attr="aria-current=${currentPath == '/admin' ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('grid')}"></svg>概览</a>
+        <a th:href="@{/admin/articles}" th:attr="aria-current=${currentPath.startsWith('/admin/articles') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('file')}"></svg>文章</a>
+        <a th:href="@{/admin/categories}" th:attr="aria-current=${currentPath.startsWith('/admin/categories') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('layers')}"></svg>分类</a>
+        <a th:href="@{/admin/tags}" th:attr="aria-current=${currentPath.startsWith('/admin/tags') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('tag')}"></svg>标签</a>
+        <a th:href="@{/admin/media}" th:attr="aria-current=${currentPath.startsWith('/admin/media') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('image')}"></svg>资源库</a>
+        <p class="nav-label">TOOLS &amp; SETTINGS</p>
+        <a th:href="@{/admin/ai-jobs}" th:attr="aria-current=${currentPath.startsWith('/admin/ai-jobs') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('spark')}"></svg>AI 任务</a>
+        <a th:href="@{/admin/backups}" th:attr="aria-current=${currentPath.startsWith('/admin/backups') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('database')}"></svg>备份</a>
+        <a th:href="@{/admin/settings}" th:attr="aria-current=${currentPath.startsWith('/admin/settings') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('settings')}"></svg>网站设置</a>
+        <div class="admin-nav-footer"><a th:href="@{/}" target="_blank" rel="noopener"><svg th:replace="~{fragments/icons :: icon('external')}"></svg>查看博客</a><div class="admin-session"><span class="admin-avatar">R</span><span>站点管理员<small>个人工作空间</small></span><button type="button" class="icon-button theme-toggle" data-theme-toggle aria-label="切换明暗主题"><svg th:replace="~{fragments/icons :: icon('moon')}"></svg></button></div><form th:action="@{/admin/logout}" method="post"><button class="link-button" type="submit"><svg th:replace="~{fragments/icons :: icon('logout')}"></svg>退出登录</button></form></div>
+    </nav>
+</header>
+<th:block th:fragment="flash"><div class="flash success" th:if="${message}" th:text="${message}" role="status"></div><div class="flash error" th:if="${error}" th:text="${error}" role="alert"></div></th:block>
+</body>
+</html>

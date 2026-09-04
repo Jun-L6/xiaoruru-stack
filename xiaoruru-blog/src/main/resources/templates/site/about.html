@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/site :: head(${pageTitle}, '关于本站')}"></head>
+<body>
+<header th:replace="~{fragments/site :: header}"></header>
+<main class="article-shell"><article class="article-content" th:utext="${aboutHtml}"></article></main>
+<footer th:replace="~{fragments/site :: footer}"></footer>
+</body>
+</html>

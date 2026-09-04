@@ -13,6 +13,7 @@ fi
 set -a
 # shellcheck disable=SC1091
 source .env
+BLOG_DOMAIN="${BLOG_DOMAIN:-xiaoruru.beer}"
 set +a
 
 required=(
@@ -42,6 +43,13 @@ command -v docker >/dev/null 2>&1 || {
 }
 docker compose version >/dev/null
 ./scripts/validate.sh
+command -v python3 >/dev/null
+command -v openssl >/dev/null
+docker image inspect "${BLOG_IMAGE:-xiaoruru/rurublog:local}" >/dev/null 2>&1 || {
+    echo "Blog image missing. Build/load it first; see 完整部署说明.md section 5." >&2
+    exit 1
+}
+python3 scripts/init-blog.py
 
 chmod 755 scripts/*.sh
 chmod 644 scripts/init-panel.py config/gost/gost.yml.template
@@ -84,8 +92,6 @@ else
         "$GATEWAY_NETWORK" >/dev/null
 fi
 
-certificate="data/letsencrypt/live/$CERT_NAME/fullchain.pem"
-
 echo "Starting 3x-ui and Nginx UI..."
 docker compose up -d xui nginx-ui
 
@@ -123,35 +129,7 @@ docker compose run --rm --no-deps --entrypoint /app/x-ui xui \
     -listenIP "0.0.0.0"
 docker compose start xui
 
-if [[ ! -s "$certificate" ]]; then
-    ./scripts/render-nginx-sites.sh bootstrap
-
-    certbot_args=(
-        certonly
-        --webroot
-        --webroot-path /var/www/certbot
-        --cert-name "$CERT_NAME"
-        --domain "$XUI_DOMAIN"
-        --domain "$NGINX_UI_DOMAIN"
-        --domain "$CPAMP_DOMAIN"
-        --domain "$CPA_API_DOMAIN"
-        --domain "$GOST_DOMAIN"
-        --agree-tos
-        --non-interactive
-        --keep-until-expiring
-    )
-    if [[ -n "${LE_EMAIL:-}" ]]; then
-        certbot_args+=(--email "$LE_EMAIL" --no-eff-email)
-    else
-        certbot_args+=(--register-unsafely-without-email)
-    fi
-    if [[ "${LE_STAGING:-0}" == "1" ]]; then
-        certbot_args+=(--staging)
-    fi
-
-    echo "Requesting the shared TLS certificate..."
-    docker compose --profile ops run --rm certbot "${certbot_args[@]}"
-fi
+./scripts/ensure-certificate.sh
 
 ./scripts/render-nginx-sites.sh final
 
@@ -173,6 +151,7 @@ fi
 
 echo "Starting the complete stack..."
 docker compose up -d xui nginx-ui gost
+docker compose up -d --no-build --wait --wait-timeout 240 rurublog
 docker compose ps
 
 echo
@@ -180,4 +159,6 @@ echo "Nginx UI: https://$NGINX_UI_DOMAIN/"
 echo "3x-ui:     https://$XUI_DOMAIN/"
 echo "CPAMP:     https://$CPAMP_DOMAIN/"
 echo "CPA API:   https://$CPA_API_DOMAIN/"
+echo "Blog:      https://$BLOG_DOMAIN/"
+echo "Blog admin credentials: $project_dir/config/rurublog/application.yml"
 echo "Client access data: $project_dir/data/bootstrap-output/access.json"

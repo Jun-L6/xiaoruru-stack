@@ -119,6 +119,60 @@ services:
         max-size: 20m
         max-file: "5"
 
+  rurublog:
+    image: ${BLOG_IMAGE:-xiaoruru/rurublog:local}
+    build:
+      context: ./xiaoruru-blog
+      target: ${BLOG_BUILD_TARGET:-runtime}
+    container_name: xiaoruru-rurublog
+    restart: unless-stopped
+    init: true
+    user: "${BLOG_UID:-10001}:${BLOG_GID:-10001}"
+    environment:
+      TZ: ${TZ}
+      BLOG_DATA_DIR: /data
+      SERVER_PORT: "8080"
+      BLOG_PUBLIC_URL: https://${BLOG_DOMAIN:-xiaoruru.beer}
+      BLOG_COOKIE_SECURE: "true"
+      SERVER_TOMCAT_THREADS_MAX: "32"
+      SERVER_TOMCAT_THREADS_MIN_SPARE: "4"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
+      JAVA_TOOL_OPTIONS: "${BLOG_JAVA_OPTIONS:--Xms64m -Xmx320m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=64m -Xss512k -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:+ExitOnOutOfMemoryError}"
+    volumes:
+      - type: bind
+        source: ./config/rurublog
+        target: /app/config
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/rurublog
+        target: /data
+        bind:
+          create_host_path: false
+    expose:
+      - "8080/tcp"
+    networks:
+      - gateway
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${BLOG_MEMORY_LIMIT:-768m}
+    mem_reservation: 256m
+    cpus: "${BLOG_CPUS:-1.0}"
+    pids_limit: 128
+    stop_grace_period: 30s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+
   certbot:
     image: ${CERTBOT_IMAGE}
     container_name: xiaoruru-certbot

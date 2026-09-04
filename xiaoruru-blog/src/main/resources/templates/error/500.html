@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/site :: head('暂时无法完成请求', '服务器暂时无法完成请求')}"></head>
+<body>
+<header th:replace="~{fragments/site :: header}"></header>
+<main class="page-shell narrow-page error-page"><p class="eyebrow">500</p><h1>暂时无法完成请求</h1><p>问题已经记录到服务器日志，请稍后重试。</p><a class="button primary" th:href="@{/}">返回首页</a></main>
+<footer th:replace="~{fragments/site :: footer}"></footer>
+</body>
+</html>

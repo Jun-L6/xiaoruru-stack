@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title, description)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${title == site['site.name'] ? title + ' · rurublog' : title + ' · ' + site['site.name']}">小茹茹博客</title>
+    <meta name="description" th:if="${description != null}" th:content="${description}">
+    <link rel="canonical" th:if="${canonical != null}" th:href="${canonical}">
+    <meta property="og:title" th:content="${title}">
+    <meta property="og:description" th:if="${description != null}" th:content="${description}">
+    <meta property="og:type" th:content="${canonical != null ? 'article' : 'website'}">
+    <meta property="og:url" th:if="${canonical != null}" th:content="${canonical}">
+    <meta name="color-scheme" content="light dark">
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="alternate" type="application/rss+xml" title="RSS" th:href="@{/feed.xml}">
+    <link rel="stylesheet" th:href="@{/css/site.css}">
+    <link rel="stylesheet" th:href="@{/webjars/katex/0.16.44/dist/katex.min.css}">
+    <script th:src="@{/js/theme.js}"></script>
+</head>
+<body>
+<header class="site-header" th:fragment="header">
+    <div class="nav-shell">
+        <a class="site-brand" th:href="@{/}"><span class="brand-mark" aria-hidden="true">r<span>.</span></span><span th:text="${site['site.name']}">小茹茹博客</span></a>
+        <nav class="site-nav" aria-label="主要导航">
+            <a th:href="@{/}" th:attr="aria-current=${currentPath == '/' ? 'page' : null}">文章</a>
+            <a th:href="@{/archives}" th:attr="aria-current=${currentPath == '/archives' ? 'page' : null}">归档</a>
+            <a th:href="@{/categories}" th:attr="aria-current=${currentPath != null && currentPath.startsWith('/categories') ? 'page' : null}">分类</a>
+            <a th:href="@{/tags}" th:attr="aria-current=${currentPath != null && currentPath.startsWith('/tags') ? 'page' : null}">标签</a>
+            <a th:href="@{/about}" th:attr="aria-current=${currentPath == '/about' ? 'page' : null}">关于</a>
+        </nav>
+        <div class="nav-tools"><a class="icon-button" th:href="@{/search}" aria-label="搜索文章"><svg th:replace="~{fragments/icons :: icon('search')}"></svg></a><button type="button" class="icon-button theme-toggle" data-theme-toggle aria-label="切换明暗主题"><svg th:replace="~{fragments/icons :: icon('moon')}"></svg></button></div>
+    </div>
+</header>
+<footer class="site-footer" th:fragment="footer">
+    <div><a class="footer-brand" th:href="@{/}">rurublog<span>.</span></a><p th:text="${site['site.footer']}">由 rurublog 驱动</p></div>
+    <div class="footer-links"><span>保持好奇，持续构建。</span><a th:href="@{/feed.xml}">RSS 订阅 ↗</a><a th:href="@{/admin}">管理</a></div>
+</footer>
+</body>
+</html>

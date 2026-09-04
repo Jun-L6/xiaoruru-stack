@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/admin :: head(${article == null ? '新建文章' : '编辑文章'})}"></head>
+<body>
+<header th:replace="~{fragments/admin :: header}"></header>
+<main class="editor-shell">
+    <div th:replace="~{fragments/admin :: flash}"></div>
+    <form id="article-form" class="editor-form" th:action="@{/admin/articles/save}" method="post" th:object="${articleForm}">
+        <input type="hidden" th:field="*{id}">
+        <div class="editor-toolbar">
+            <div><a th:href="@{/admin/articles}">← 文章列表</a><span class="save-state" data-save-state th:text="${article == null ? '首次请手动保存' : '已保存'}">已保存</span></div>
+            <div class="button-row">
+                <button type="button" data-preview-toggle>切换预览</button>
+                <button class="primary" type="submit">保存</button>
+            </div>
+        </div>
+        <div class="form-errors" th:if="${#fields.hasAnyErrors()}"><p th:each="error : ${#fields.allErrors()}" th:text="${error}">错误</p></div>
+        <div class="editor-grid">
+            <section class="editor-main">
+                <label for="title">标题</label>
+                <input id="title" class="title-input" th:field="*{title}" maxlength="200" required placeholder="文章标题">
+                <div class="inline-fields">
+                    <label>正文格式<select th:field="*{contentType}" data-content-type><option th:each="type : ${contentTypes}" th:value="${type}" th:text="${type}"></option></select></label>
+                    <label>固定链接<input th:field="*{slug}" maxlength="220" placeholder="留空自动生成"></label>
+                </div>
+                <label for="content">正文</label>
+                <div class="markdown-tools" data-markdown-tools>
+                    <button type="button" data-insert="## 标题">H2</button><button type="button" data-wrap="**">加粗</button><button type="button" data-prefix="> ">引用</button><button type="button" data-block="```java&#10;// code&#10;```">代码</button><button type="button" data-block="| 列一 | 列二 |&#10;| --- | --- |&#10;| 内容 | 内容 |">表格</button><button type="button" data-block="```mermaid&#10;flowchart LR&#10;  A[开始] --> B[结束]&#10;```">流程图</button><button type="button" data-wrap-link>链接</button>
+                </div>
+                <textarea id="content" class="content-editor" th:field="*{content}" data-content-editor required spellcheck="false"></textarea>
+                <section class="editor-preview article-content" data-editor-preview hidden></section>
+            </section>
+            <aside class="editor-sidebar">
+                <label>分类<select th:field="*{categoryId}" required><option th:each="category : ${leafCategories}" th:value="${category.id}" th:text="${category.pathName}"></option></select></label>
+                <label>标签<input th:field="*{tags}" maxlength="500" placeholder="Java, Spring, JVM"><small>使用逗号分隔，最多 6 个</small></label>
+                <label>插入图片或附件<input type="file" data-media-upload accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,text/markdown,application/zip"><small data-upload-state>上传后自动插入正文</small></label>
+                <label>摘要<textarea th:field="*{summary}" rows="5" maxlength="1000" placeholder="留空则从正文生成"></textarea></label>
+                <label>SEO 标题<input th:field="*{seoTitle}" maxlength="200"></label>
+                <label>SEO 描述<textarea th:field="*{seoDescription}" rows="3" maxlength="500"></textarea></label>
+                <label class="checkbox"><input type="checkbox" th:field="*{pinned}"> 置顶文章</label>
+                <label class="checkbox"><input type="checkbox" th:field="*{classificationLocked}"> 锁定人工分类</label>
+                <div class="ai-result" th:if="${article != null}">
+                    <strong>AI 分类</strong>
+                    <span class="status" th:text="${article.classificationStatus}">PENDING</span>
+                    <p th:if="${article.classificationConfidence != null}" th:text="'置信度：' + ${#numbers.formatDecimal(article.classificationConfidence, 1, 2)}"></p>
+                    <p th:if="${article.classificationReason}" th:text="${article.classificationReason}"></p>
+                </div>
+            </aside>
+        </div>
+    </form>
+    <div class="editor-actions" th:if="${article != null}">
+        <form th:action="@{/admin/articles/{id}/classify(id=${article.id})}" method="post" onsubmit="return confirm('重新分类会解除人工分类锁，AI 结果可能覆盖当前分类和标签。确认继续？')"><button type="submit">重新 AI 分类</button></form>
+        <form th:if="${article.status.name() != 'PUBLISHED'}" th:action="@{/admin/articles/{id}/publish(id=${article.id})}" method="post"><button class="primary" type="submit">发布文章</button></form>
+        <form th:if="${article.status.name() == 'PUBLISHED'}" th:action="@{/admin/articles/{id}/withdraw(id=${article.id})}" method="post"><button type="submit">撤回为草稿</button></form>
+        <form th:if="${article.status.name() != 'TRASHED'}" th:action="@{/admin/articles/{id}/trash(id=${article.id})}" method="post" onsubmit="return confirm('确定移入回收站吗？')"><button class="danger" type="submit">移入回收站</button></form>
+        <form th:if="${article.status.name() == 'TRASHED'}" th:action="@{/admin/articles/{id}/restore(id=${article.id})}" method="post"><button type="submit">恢复为草稿</button></form>
+        <form th:if="${article.status.name() == 'TRASHED'}" th:action="@{/admin/articles/{id}/delete(id=${article.id})}" method="post" onsubmit="return confirm('此操作不能撤销。文章历史与 AI 任务会一并删除，但资源文件会保留。确定永久删除？')"><button class="danger" type="submit">永久删除</button></form>
+    </div>
+</main>
+<script th:src="@{/webjars/highlightjs__cdn-assets/11.11.1/highlight.min.js}"></script>
+<script th:src="@{/webjars/katex/0.16.44/dist/katex.min.js}"></script>
+<script th:src="@{/webjars/katex/0.16.44/dist/contrib/auto-render.min.js}"></script>
+<script th:src="@{/webjars/mermaid/11.17.1/dist/mermaid.min.js}"></script>
+<script th:src="@{/js/article.js}"></script>
+<script th:src="@{/js/editor.js}"></script>
+</body>
+</html>

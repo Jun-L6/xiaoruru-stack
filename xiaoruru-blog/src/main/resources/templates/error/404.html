@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/site :: head('页面不存在', '请求的页面不存在或已经被移走')}"></head>
+<body>
+<header th:replace="~{fragments/site :: header}"></header>
+<main class="page-shell narrow-page error-page"><p class="eyebrow">404</p><h1>这一页不在这里</h1><p>链接可能已经失效，或者文章还没有发布。</p><a class="button primary" th:href="@{/}">返回首页</a></main>
+<footer th:replace="~{fragments/site :: footer}"></footer>
+</body>
+</html>

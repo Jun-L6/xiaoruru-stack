@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/admin :: head('标签管理')}"></head>
+<body>
+<header th:replace="~{fragments/admin :: header}"></header>
+<main class="admin-shell">
+    <div th:replace="~{fragments/admin :: flash}"></div>
+    <div class="admin-title"><div><p class="eyebrow">TAXONOMY</p><h1>标签</h1><p>标签会在保存文章或 AI 分类时自动创建。</p></div></div>
+    <div class="table-wrap" th:if="${!tags.empty}"><table class="admin-table tag-admin-table">
+        <thead><tr><th>标签</th><th>文章数</th><th>重命名</th><th>合并到</th><th>删除</th></tr></thead>
+        <tbody><tr th:each="tag : ${tags}">
+            <td><a th:href="@{/tags/{slug}(slug=${tag.slug})}" target="_blank" th:text="${tag.name}">标签</a><br><code th:text="${tag.slug}">slug</code></td>
+            <td th:text="${tagUsage.get(tag.id)}">0</td>
+            <td><form class="inline-admin-form" th:action="@{/admin/tags/{id}/rename(id=${tag.id})}" method="post"><input name="name" required maxlength="60" th:value="${tag.name}"><button type="submit">保存</button></form></td>
+            <td><form class="inline-admin-form" th:action="@{/admin/tags/{id}/merge(id=${tag.id})}" method="post" onsubmit="return confirm('合并后源标签会被删除，文章关联会迁移到目标标签。确认继续？')">
+                <select name="targetId" required><option value="">选择目标</option><option th:each="target : ${tags}" th:if="${target.id != tag.id}" th:value="${target.id}" th:text="${target.name}"></option></select><button type="submit" th:disabled="${tags.size() < 2}">合并</button>
+            </form></td>
+            <td><form th:if="${tagUsage.get(tag.id) == 0}" th:action="@{/admin/tags/{id}/delete(id=${tag.id})}" method="post" onsubmit="return confirm('确认删除这个未使用的标签？')"><button class="danger" type="submit">删除</button></form><small th:if="${tagUsage.get(tag.id) > 0}">请先合并</small></td>
+        </tr></tbody>
+    </table></div>
+    <div class="panel" th:if="${tags.empty}">还没有标签。保存文章或完成 AI 分类后会自动创建。</div>
+</main>
+</body>
+</html>

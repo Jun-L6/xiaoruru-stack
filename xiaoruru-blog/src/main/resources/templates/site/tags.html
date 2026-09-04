@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/site :: head(${pageTitle}, '文章标签')}"></head>
+<body>
+<header th:replace="~{fragments/site :: header}"></header>
+<main class="page-shell">
+    <header class="page-heading"><p class="eyebrow">FOLLOW YOUR CURIOSITY</p><h1>从一个关键词出发<span class="accent-word">。</span></h1><p>让零散的知识，在这里彼此连接。</p></header>
+    <div class="tag-cloud">
+        <a class="tag" th:each="tag : ${tags}" th:href="@{/tags/{slug}(slug=${tag.slug})}"><span th:text="${tag.name}">标签</span><small th:text="${tagCounts.get(tag.id)}">0</small></a>
+        <p th:if="${tags.empty}">还没有标签。</p>
+    </div>
+</main>
+<footer th:replace="~{fragments/site :: footer}"></footer>
+</body>
+</html>

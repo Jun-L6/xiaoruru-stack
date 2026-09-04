@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/admin :: head('备份管理')}"></head>
+<body>
+<header th:replace="~{fragments/admin :: header}"></header>
+<main class="admin-shell">
+    <div th:replace="~{fragments/admin :: flash}"></div>
+    <div class="admin-title"><div><p class="eyebrow">BACKUP</p><h1>备份</h1><p>备份包包含 H2 一致性快照、上传资源、清单和 SHA-256 校验值。</p></div>
+        <form th:action="@{/admin/backups}" method="post"><button class="primary" type="submit">立即完整备份</button></form>
+    </div>
+    <div class="notice">本机备份不能防止整块硬盘损坏。成功后请定期下载到其他设备。</div>
+    <div class="table-wrap"><table class="admin-table"><thead><tr><th>文件</th><th>类型</th><th>状态</th><th>大小</th><th>创建时间</th><th>校验值 / 错误</th><th></th></tr></thead>
+        <tbody><tr th:each="backup : ${backups}">
+            <td th:text="${backup.fileName}">文件</td><td th:text="${backup.type}">类型</td><td><span class="status" th:text="${backup.status}">状态</span></td>
+            <td th:text="${backup.fileSize == null ? '-' : #numbers.formatDecimal(backup.fileSize / 1024.0 / 1024.0, 1, 2) + ' MB'}">-</td>
+            <td th:text="${#temporals.format(backup.createdAt, 'yyyy-MM-dd HH:mm:ss')}">时间</td>
+            <td class="checksum" th:text="${backup.errorMessage != null ? backup.errorMessage : backup.sha256}"></td>
+            <td><a th:if="${backup.status.name() == 'SUCCEEDED'}" th:href="@{/admin/backups/{id}/download(id=${backup.id})}">下载</a></td>
+        </tr></tbody>
+    </table><p class="empty-state" th:if="${backups.empty}">尚未创建备份。</p></div>
+</main>
+</body>
+</html>

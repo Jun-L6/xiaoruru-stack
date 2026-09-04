@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/site :: head(${pageTitle}, ${description})}"></head>
+<body>
+<header th:replace="~{fragments/site :: header}"></header>
+<main class="page-shell">
+    <header class="page-heading">
+        <p class="eyebrow">EXPLORE THE NOTEBOOK</p>
+        <h1 th:text="${heading}">文章列表</h1>
+        <p th:if="${description}" th:text="${description}"></p>
+        <form class="search-form" th:if="${pageTitle == '搜索'}" th:action="@{/search}" method="get">
+            <label class="sr-only" for="search-query">搜索文章</label>
+            <input id="search-query" type="search" name="q" minlength="2" maxlength="100" th:value="${query}" placeholder="输入至少两个字符">
+            <button type="submit">搜索</button>
+        </form>
+    </header>
+    <section class="article-list">
+        <article class="article-card" th:each="article : ${page.content}">
+            <p class="article-meta"><time th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd')}">日期</time></p>
+            <h2><a th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${article.title}">标题</a></h2>
+            <p class="article-summary" th:text="${article.summary}">摘要</p>
+        </article>
+        <div class="empty-state" th:if="${page.empty}"><span class="empty-icon"><svg th:replace="~{fragments/icons :: icon('search')}"></svg></span><h3 th:text="${pageTitle == '搜索' && (query == null || query.isBlank()) ? '从一个关键词开始。' : '暂时没有找到相关文章。'}">没有找到相关文章。</h3><p>试试其他关键词，或浏览全部文章。</p><a class="text-link" th:href="@{/}">返回文章列表 →</a></div>
+    </section>
+    <nav class="pagination" th:if="${page.totalPages > 1}">
+        <a th:if="${page.hasPrevious()}" th:href="${previousUrl}">← 上一页</a>
+        <span th:text="${page.number + 1} + ' / ' + ${page.totalPages}">1 / 1</span>
+        <a th:if="${page.hasNext()}" th:href="${nextUrl}">下一页 →</a>
+    </nav>
+</main>
+<footer th:replace="~{fragments/site :: footer}"></footer>
+</body>
+</html>

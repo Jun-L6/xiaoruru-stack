@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/site :: head(${pageTitle}, ${description})}"></head>
+<body>
+<div class="reading-progress" data-reading-progress aria-hidden="true"></div>
+<header th:replace="~{fragments/site :: header}"></header>
+<main class="article-shell">
+    <article>
+        <header class="article-heading">
+            <p class="breadcrumbs"><a th:href="@{/}">首页</a> / <a th:href="@{/categories/{slug}(slug=${article.category.slug})}" th:text="${article.category.pathName}">分类</a></p>
+            <h1 th:text="${article.title}">文章标题</h1>
+            <p class="article-meta">
+                发布于 <time th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd HH:mm')}">时间</time>
+                <span> · 更新于 <time th:text="${#temporals.format(article.updatedAt, 'yyyy-MM-dd HH:mm')}">时间</time></span>
+            </p>
+            <p class="article-lead" th:if="${article.summary}" th:text="${article.summary}">摘要</p>
+            <div class="tag-row" th:if="${!article.tags.empty}">
+                <a class="tag" th:each="tag : ${article.tags}" th:href="@{/tags/{slug}(slug=${tag.slug})}" th:text="${tag.name}">标签</a>
+            </div>
+        </header>
+        <nav class="article-toc" data-article-toc hidden aria-label="文章目录"><strong><span class="eyebrow">ON THIS PAGE</span> 本文目录</strong><ol></ol></nav>
+        <div class="article-content" data-article-content th:utext="${article.renderedHtml}"></div>
+        <nav class="article-neighbors" th:if="${previousArticle != null || nextArticle != null}" aria-label="相邻文章">
+            <a th:if="${previousArticle != null}" th:href="@{/posts/{slug}(slug=${previousArticle.slug})}"><small>上一篇</small><span th:text="${previousArticle.title}">上一篇文章</span></a>
+            <span th:if="${previousArticle == null}"></span>
+            <a class="next" th:if="${nextArticle != null}" th:href="@{/posts/{slug}(slug=${nextArticle.slug})}"><small>下一篇</small><span th:text="${nextArticle.title}">下一篇文章</span></a>
+        </nav>
+    </article>
+</main>
+<footer th:replace="~{fragments/site :: footer}"></footer>
+<script th:src="@{/webjars/highlightjs__cdn-assets/11.11.1/highlight.min.js}"></script>
+<script th:src="@{/webjars/katex/0.16.44/dist/katex.min.js}"></script>
+<script th:src="@{/webjars/katex/0.16.44/dist/contrib/auto-render.min.js}"></script>
+<script th:src="@{/webjars/mermaid/11.17.1/dist/mermaid.min.js}"></script>
+<script th:src="@{/js/article.js}"></script>
+</body>
+</html>
