@@ -16,9 +16,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    config = json.loads(subprocess.check_output(
-        ["docker", "compose", "config", "--format", "json"], cwd=ROOT))
-    blog_env = config["services"]["rurublog"]["environment"]
+    blog_env = {
+        "BLOG_COOKIE_SECURE": "true", "SERVER_TOMCAT_THREADS_MAX": "32",
+        "SERVER_TOMCAT_THREADS_MIN_SPARE": "4",
+        "SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE": "4",
+        "SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE": "1",
+        "JAVA_TOOL_OPTIONS": "-Xms64m -Xmx320m -XX:MaxMetaspaceSize=160m "
+            "-XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=64m -Xss512k "
+            "-XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:+ExitOnOutOfMemoryError",
+    }
     with tempfile.TemporaryDirectory(prefix="xiaoruru-blog-smoke-") as temporary:
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
@@ -27,7 +33,7 @@ def main():
         env = {**os.environ, **blog_env, "BLOG_DATA_DIR": temporary + "/data",
                "SERVER_ADDRESS": "127.0.0.1", "SERVER_PORT": str(port),
                "BLOG_ADMIN_SECRET": secret, "BLOG_DB_PASSWORD": secrets.token_hex(24),
-               "BLOG_AI_ENABLED": "false", "BLOG_BACKUP_ENABLED": "false",
+               "BLOG_BACKUP_ENABLED": "false",
                "SPRING_CONFIG_LOCATION": "classpath:/application.yml"}
 
         def request(path, method="GET", body=None, headers=None):
@@ -40,7 +46,7 @@ def main():
             return result
 
         with open(temporary + "/runtime.log", "w+") as log:
-            process = subprocess.Popen(["java", "-jar", str(ROOT / "xiaoruru-blog/target/rurublog.jar")],
+            process = subprocess.Popen(["java", "-jar", str(ROOT / "apps/blog/target/rurublog.jar")],
                                        cwd=temporary, env=env, stdout=log, stderr=subprocess.STDOUT)
             try:
                 started = time.monotonic()
@@ -68,6 +74,8 @@ def main():
                 assert status == 302 and headers["Location"].endswith("/admin"), (status, headers)
                 admin_cookie = headers.get("Set-Cookie", cookie).split(";", 1)[0]
                 assert request("/admin", headers={"Cookie": admin_cookie})[0] == 200
+                status, _, settings_page = request("/admin/ai-settings", headers={"Cookie": admin_cookie})
+                assert status == 200 and "关闭 AI" in settings_page and "Docker 内网" in settings_page
                 with ThreadPoolExecutor(max_workers=4) as pool:
                     statuses = list(pool.map(lambda _: request("/")[0], range(100)))
                 assert all(status == 200 for status in statuses)

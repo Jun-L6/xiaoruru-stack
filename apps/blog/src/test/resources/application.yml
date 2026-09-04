@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:rurublog_test;DB_CLOSE_DELAY=-1
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+blog:
+  data-dir: ${java.io.tmpdir}/rurublog-tests
+  public-url: http://localhost
+  admin:
+    secret-hash: "{noop}test-secret"
+    session-timeout: 1h
+  ai:
+    classification:
+      auto-run: false
+      delay-after-save: 1s
+      minimum-confidence: 0.55
+      review-confidence: 0.80
+      min-tags: 2
+      max-tags: 6
+  backup:
+    enabled: false
+    retention-count: 2
+  upload:
+    max-file-size: 1MB

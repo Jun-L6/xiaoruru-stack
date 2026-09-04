@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "enabled": ["vpn", "cpa", "blog"],
+  "gost": false,
+  "email": "",
+  "network": {"name": "xiaoruru-gateway", "subnet": "172.30.60.0/24"},
+  "domains": {
+    "gateway": "nginx-ui.xiaoruru.beer",
+    "vpn": "3x-ui.xiaoruru.beer",
+    "cpamp": "cpa-mp.xiaoruru.beer",
+    "cpa_api": "cli-proxy-api.xiaoruru.beer",
+    "blog": "xiaoruru.beer",
+    "gost": "www.xiaoruru.beer"
+  },
+  "images": {
+    "nginx_ui": "uozi/nginx-ui:v2.5.10",
+    "xui": "ghcr.io/mhsanaei/3x-ui:v3.7.0",
+    "gost": "gogost/gost:3.2.6",
+    "certbot": "certbot/certbot:v5.7.0",
+    "panel_init": "python:3.13.7-alpine3.22",
+    "blog": "xiaoruru/rurublog:local"
+  }
+}

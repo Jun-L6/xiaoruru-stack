@@ -1,0 +1,79 @@
+spring:
+  application:
+    name: rurublog
+  datasource:
+    url: jdbc:h2:file:${blog.data-dir}/database/blog;AUTO_SERVER=FALSE;DB_CLOSE_ON_EXIT=FALSE
+    username: blog
+    password: ${BLOG_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 1
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: ${BLOG_UPLOAD_MAX_SIZE:20MB}
+      max-request-size: ${BLOG_UPLOAD_MAX_SIZE:20MB}
+  thymeleaf:
+    cache: true
+
+server:
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: strict
+        secure: ${BLOG_COOKIE_SECURE:false}
+      timeout: ${BLOG_ADMIN_SESSION_TIMEOUT:12h}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+blog:
+  data-dir: ${BLOG_DATA_DIR:./data}
+  public-url: ${BLOG_PUBLIC_URL:http://localhost:8080}
+  admin:
+    # 可在项目 config/application.yml 中直接填写登录密钥；已有 hash 配置优先。
+    secret: ${BLOG_ADMIN_SECRET:}
+    secret-hash: ${BLOG_ADMIN_SECRET_HASH:}
+    session-timeout: ${BLOG_ADMIN_SESSION_TIMEOUT:12h}
+  ai:
+    classification:
+      auto-run: ${BLOG_AI_AUTO_RUN:true}
+      delay-after-save: ${BLOG_AI_DELAY:10s}
+      minimum-confidence: ${BLOG_AI_MIN_CONFIDENCE:0.55}
+      review-confidence: ${BLOG_AI_REVIEW_CONFIDENCE:0.80}
+      min-tags: 2
+      max-tags: 6
+  backup:
+    enabled: ${BLOG_BACKUP_ENABLED:true}
+    cron: ${BLOG_BACKUP_CRON:0 0 3 * * *}
+    retention-count: ${BLOG_BACKUP_RETENTION:7}
+  upload:
+    max-file-size: ${BLOG_UPLOAD_MAX_SIZE:20MB}
+
+logging:
+  file:
+    name: ${blog.data-dir}/logs/blog.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 14

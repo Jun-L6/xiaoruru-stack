@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/admin :: head('AI 设置')}"></head>
+<body>
+<header th:replace="~{fragments/admin :: header}"></header>
+<main class="admin-shell narrow-admin">
+    <div th:replace="~{fragments/admin :: flash}"></div>
+    <div class="admin-title"><div><p class="eyebrow">AI SETTINGS</p><h1>AI 设置</h1></div></div>
+    <p>选择模型接入方式。保存不会测试连接；实际使用失败时，在 AI 任务中查看错误。</p>
+    <form th:action="@{/admin/ai-settings}" method="post" class="panel stack-form" id="ai-form">
+        <label for="ai-mode">接入方式</label>
+        <select id="ai-mode" name="mode">
+            <option value="none" th:selected="${ai.mode == 'none'}">关闭 AI</option>
+            <option value="cpa" th:selected="${ai.mode == 'cpa'}">使用 CPA（Docker 内网）</option>
+            <option value="external" th:selected="${ai.mode == 'external'}">外部 OpenAI-compatible 模型</option>
+        </select>
+        <fieldset id="ai-fields" class="stack-form ai-settings-fields">
+            <legend>模型接口</legend>
+            <label>接口根地址<input id="ai-base" name="baseUrl" type="url" maxlength="1000"></label>
+            <small>CPA 地址固定为 http://cli-proxy-api:8317；外部地址与下方路径直接拼接，避免重复 /v1。</small>
+            <label>调用路径<input id="ai-path" name="completionsPath" maxlength="200"></label>
+            <label>模型名称<input id="ai-model" name="model" maxlength="200"></label>
+            <label>API Key<input id="ai-key" name="apiKey" type="password" autocomplete="new-password" maxlength="4096"></label>
+            <small id="key-hint" role="status"></small>
+            <label class="checkbox"><input name="clearKey" type="checkbox">清除所选接口的密钥并关闭 AI</label>
+            <label>请求超时（秒）<input id="ai-timeout" name="timeoutSeconds" type="number" min="1" max="300"></label>
+            <label>Temperature（可留空）<input id="ai-temperature" name="temperature" type="number" min="0" max="2" step="0.1"></label>
+        </fieldset>
+        <noscript>本页面需要 JavaScript 切换配置字段。仍可选择关闭 AI 并保存。</noscript>
+        <button class="primary" type="submit">保存设置</button>
+    </form>
+</main>
+<script th:inline="javascript">
+    const profiles = /*[[${ai}]]*/ {};
+    const mode = document.getElementById('ai-mode');
+    function selectMode() {
+        document.querySelector('[name="clearKey"]').checked = false;
+        const disabled = mode.value === 'none';
+        const fields = document.getElementById('ai-fields');
+        fields.hidden = disabled;
+        fields.disabled = disabled;
+        if (disabled) return;
+        const profile = profiles[mode.value];
+        document.getElementById('ai-base').value = profile.baseUrl;
+        document.getElementById('ai-base').readOnly = mode.value === 'cpa';
+        document.getElementById('ai-path').value = profile.completionsPath;
+        document.getElementById('ai-model').value = profile.model;
+        document.getElementById('ai-timeout').value = profile.timeoutSeconds;
+        document.getElementById('ai-temperature').value = profile.temperature;
+        document.getElementById('ai-key').value = '';
+        document.getElementById('key-hint').textContent = profile.hasKey
+            ? '密钥已保存。留空保留原密钥；更换接口地址时必须重新填写。'
+            : (mode.value === 'cpa' ? '尚未保存密钥。CPA 使用普通 API Key，不是管理密钥。' : '尚未保存密钥，请填写此接口的 API Key。');
+    }
+    mode.addEventListener('change', selectMode);
+    selectMode();
+</script>
+</body>
+</html>

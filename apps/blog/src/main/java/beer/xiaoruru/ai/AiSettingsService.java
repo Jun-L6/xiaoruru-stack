@@ -1,0 +1,177 @@
+package beer.xiaoruru.ai;
+
+import beer.xiaoruru.config.BlogProperties;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.security.SecureRandom;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.Map;
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
+
+@Service
+public class AiSettingsService {
+    public static final String CPA_URL = "http://cli-proxy-api:8317";
+    private final AiSettingsRepository repository;
+    private final ObjectMapper mapper;
+    private final Path keyPath;
+
+    public AiSettingsService(AiSettingsRepository repository, ObjectMapper mapper, BlogProperties properties) {
+        this.repository = repository;
+        this.mapper = mapper;
+        this.keyPath = properties.dataDir().resolve("secrets/ai.key");
+    }
+
+    public record Profile(String baseUrl, String encryptedKey, String model, String completionsPath,
+                          int timeoutSeconds, Double temperature) {}
+    public record Document(String mode, Profile cpa, Profile external) {}
+    public record Form(String mode, String baseUrl, String apiKey, String model, String completionsPath,
+                       int timeoutSeconds, Double temperature, boolean clearKey) {
+        @Override public String toString() { return "AiSettingsForm[REDACTED]"; }
+    }
+    public record Connection(URI endpoint, String apiKey, String model, Duration timeout, Double temperature) {
+        @Override public String toString() { return "AiConnection[REDACTED]"; }
+    }
+
+    private Profile defaults(String url) {
+        return new Profile(url, "", "", "/v1/chat/completions", 45, null);
+    }
+
+    private Document document() {
+        return repository.findById(1L).map(row -> mapper.readValue(row.getDocument(), Document.class))
+                .orElseGet(() -> new Document("none", defaults(CPA_URL), defaults("https://api.example.com")));
+    }
+
+    public boolean enabled() { return !document().mode().equals("none"); }
+
+    private Profile selected(Document doc) { return doc.mode().equals("cpa") ? doc.cpa() : doc.external(); }
+
+    public Duration timeout() { return Duration.ofSeconds(selected(document()).timeoutSeconds()); }
+    public String model() { return selected(document()).model(); }
+    public String endpoint() { return selected(document()).baseUrl(); }
+
+    public Map<String, Object> view() {
+        Document doc = document();
+        return Map.of("mode", doc.mode(), "cpa", publicProfile(doc.cpa()), "external", publicProfile(doc.external()));
+    }
+
+    private Map<String, Object> publicProfile(Profile profile) {
+        return Map.of("baseUrl", profile.baseUrl(), "hasKey", !profile.encryptedKey().isBlank(),
+                "model", profile.model(), "completionsPath", profile.completionsPath(),
+                "timeoutSeconds", profile.timeoutSeconds(),
+                "temperature", profile.temperature() == null ? "" : profile.temperature().toString());
+    }
+
+    @Transactional
+    public synchronized void save(Form form) {
+        if (!java.util.Set.of("none", "cpa", "external").contains(form.mode())) {
+            throw new IllegalArgumentException("请选择关闭、CPA 或外部模型。");
+        }
+        Document old = document();
+        Document next;
+        if (form.clearKey() && !form.mode().equals("none")) {
+            Profile previous = form.mode().equals("cpa") ? old.cpa() : old.external();
+            Profile cleared = new Profile(previous.baseUrl(), "", previous.model(),
+                    previous.completionsPath(), previous.timeoutSeconds(), previous.temperature());
+            next = form.mode().equals("cpa")
+                    ? new Document("none", cleared, old.external()) : new Document("none", old.cpa(), cleared);
+        } else if (form.mode().equals("none")) {
+            next = new Document("none", old.cpa(), old.external());
+        } else {
+            Profile previous = form.mode().equals("cpa") ? old.cpa() : old.external();
+            String base = form.mode().equals("cpa") ? CPA_URL : value(form.baseUrl()).replaceAll("/+$", "");
+            String path = value(form.completionsPath());
+            String model = value(form.model());
+            URI uri;
+            try { uri = URI.create(base); }
+            catch (IllegalArgumentException exception) { throw new IllegalArgumentException("接口地址格式不正确。"); }
+            if (!java.util.Set.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null
+                    || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
+                    || base.length() > 1000) {
+                throw new IllegalArgumentException("接口地址必须是 HTTP(S) URL，不得包含账号、查询参数或片段。");
+            }
+            if (!path.matches("/[a-zA-Z0-9/_-]+") || path.contains("//") || path.length() > 200) {
+                throw new IllegalArgumentException("调用路径格式不正确，例如 /v1/chat/completions。");
+            }
+            if (model.isBlank() || model.length() > 200 || model.chars().anyMatch(Character::isISOControl)) {
+                throw new IllegalArgumentException("请填写模型名称（最多 200 字符）。");
+            }
+            if (form.timeoutSeconds() < 1 || form.timeoutSeconds() > 300) {
+                throw new IllegalArgumentException("超时范围为 1 至 300 秒。");
+            }
+            if (form.temperature() != null && (!Double.isFinite(form.temperature())
+                    || form.temperature() < 0 || form.temperature() > 2)) {
+                throw new IllegalArgumentException("Temperature 范围为 0 至 2，留空使用模型默认值。");
+            }
+            String supplied = value(form.apiKey());
+            if (supplied.length() > 4096 || supplied.chars().anyMatch(Character::isISOControl)) {
+                throw new IllegalArgumentException("API Key 格式不正确。");
+            }
+            // A key is never silently forwarded to a newly selected external origin.
+            String key = form.clearKey() || !base.equals(previous.baseUrl()) ? "" : previous.encryptedKey();
+            if (!supplied.isBlank() && !form.clearKey()) key = encrypt(supplied);
+            if (key.isBlank()) throw new IllegalArgumentException("启用 AI 时必须填写 API Key；更换地址后请重新填写。");
+            Profile profile = new Profile(base, key, model, path, form.timeoutSeconds(), form.temperature());
+            next = form.mode().equals("cpa")
+                    ? new Document("cpa", profile, old.external()) : new Document("external", old.cpa(), profile);
+        }
+        AiSettings row = repository.findById(1L).orElseGet(() -> new AiSettings(""));
+        row.setDocument(mapper.writeValueAsString(next));
+        repository.saveAndFlush(row);
+    }
+
+    public Connection connection() {
+        Document doc = document();
+        if (doc.mode().equals("none")) throw new IllegalStateException("AI 已关闭，请在后台 AI 设置中启用。");
+        Profile profile = selected(doc);
+        return new Connection(URI.create(profile.baseUrl() + profile.completionsPath()),
+                decrypt(profile.encryptedKey()), profile.model(),
+                Duration.ofSeconds(profile.timeoutSeconds()), profile.temperature());
+    }
+
+    private String encrypt(String value) { return crypt(value, true); }
+    private String decrypt(String value) { return crypt(value, false); }
+
+    private synchronized String crypt(String value, boolean encrypt) {
+        try {
+            if (Files.isSymbolicLink(keyPath) || Files.isSymbolicLink(keyPath.getParent())) {
+                throw new IllegalStateException("AI 密钥路径不可使用符号链接。");
+            }
+            if (!Files.exists(keyPath)) {
+                if (!encrypt) throw new IllegalStateException("AI 加密密钥文件缺失，请重新填写 API Key。");
+                Files.createDirectories(keyPath.getParent());
+                Files.setPosixFilePermissions(keyPath.getParent(), PosixFilePermissions.fromString("rwx------"));
+                byte[] key = new byte[32];
+                new SecureRandom().nextBytes(key);
+                Files.write(keyPath, key, StandardOpenOption.CREATE_NEW);
+                Files.setPosixFilePermissions(keyPath, PosixFilePermissions.fromString("rw-------"));
+            }
+            byte[] key = Files.readAllBytes(keyPath);
+            byte[] nonce = new byte[12];
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            if (encrypt) {
+                new SecureRandom().nextBytes(nonce);
+                cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(128, nonce));
+                byte[] ciphertext = cipher.doFinal(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                return Base64.getEncoder().encodeToString(nonce) + "." + Base64.getEncoder().encodeToString(ciphertext);
+            }
+            String[] parts = value.split("\\.", 2);
+            nonce = Base64.getDecoder().decode(parts[0]);
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(128, nonce));
+            return new String(cipher.doFinal(Base64.getDecoder().decode(parts[1])),
+                    java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法读写 AI 加密密钥，请检查 data 目录权限和密钥文件。");
+        }
+    }
+
+    private static String value(String text) { return text == null ? "" : text.strip(); }
+}

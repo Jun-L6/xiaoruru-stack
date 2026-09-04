@@ -1,15 +1,14 @@
 .env
-config/rurublog/application.yml
-config/rurublog/application.yaml
 *.tar
 __pycache__/
 
-data/**
-!data/**/
-!data/**/.gitkeep
+data/
+*.pyc
 
 *.tar.gz
 *.sha256
 .DS_Store
 
 .idea/**
+output/
+.playwright-cli/

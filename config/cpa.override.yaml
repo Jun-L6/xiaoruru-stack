@@ -1,0 +1,28 @@
+services:
+  cli-proxy-api:
+    ports: !reset []
+    networks:
+      default: {}
+      gateway:
+        aliases: [cli-proxy-api]
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+  cpa-manager-plus:
+    ports: !reset []
+    volumes:
+      - type: bind
+        source: ./manager
+        target: /data
+        bind: {create_host_path: false}
+    networks:
+      default: {}
+      gateway:
+        aliases: [cpa-manager-plus]
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+networks:
+  gateway:
+    external: true
+    name: __GATEWAY_NETWORK__

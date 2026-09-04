@@ -1,225 +1,167 @@
-name: ${COMPOSE_PROJECT_NAME:-xiaoruru}
+name: xiaoruru
+
+x-logging: &logging
+  driver: local
+  options:
+    max-size: 10m
+    max-file: "3"
 
 services:
-  xui:
-    image: ${XUI_IMAGE}
-    container_name: xiaoruru-xui
-    hostname: xui
-    restart: unless-stopped
-    init: true
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    environment:
-      TZ: ${TZ}
-      XRAY_VMESS_AEAD_FORCED: "false"
-      XUI_ENABLE_FAIL2BAN: "true"
-      XUI_DB_FOLDER: /etc/x-ui
-      XUI_LOG_FOLDER: /var/log/x-ui
-      XUI_PORT: ${XUI_PANEL_PORT}
-      XUI_INIT_WEB_BASE_PATH: ${XUI_WEB_BASE_PATH}
-      XUI_MEMORY_LIMIT: ${XUI_MEMORY_LIMIT_MB}
-    volumes:
-      - ./data/x-ui:/etc/x-ui
-      - ./data/letsencrypt:/etc/letsencrypt:ro
-      - ./data/logs/x-ui:/var/log/x-ui
-    expose:
-      - "${XUI_PANEL_PORT}/tcp"
-      - "${XUI_SUB_PORT}/tcp"
-    ports:
-      - "${XRAY_PORT}:${XRAY_PORT}/tcp"
-      - "${XRAY_PORT}:${XRAY_PORT}/udp"
-    networks:
-      - gateway
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${XUI_PANEL_PORT}${XUI_WEB_BASE_PATH} >/dev/null || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 20
-      start_period: 30s
-    logging:
-      driver: local
-      options:
-        max-size: 20m
-        max-file: "5"
-
   nginx-ui:
     image: ${NGINX_UI_IMAGE}
-    container_name: xiaoruru-nginx-ui
-    hostname: nginx-ui
     restart: unless-stopped
     environment:
-      TZ: ${TZ}
+      TZ: Asia/Shanghai
       NGINX_UI_NODE_SKIP_INSTALLATION: "true"
-      NGINX_UI_PREDEFINED_USER_NAME: ${XUI_ADMIN_USERNAME}
-      NGINX_UI_PREDEFINED_USER_PASSWORD: ${XUI_ADMIN_PASSWORD}
+      NGINX_UI_PREDEFINED_USER_NAME: ${GATEWAY_USERNAME}
+      NGINX_UI_PREDEFINED_USER_PASSWORD: ${GATEWAY_PASSWORD}
       NGINX_UI_SERVER_RUN_MODE: release
       NGINX_UI_CERT_EMAIL: ${LE_EMAIL}
       NGINX_UI_IGNORE_DOCKER_SOCKET: "true"
       NGINX_UI_LOGROTATE_ENABLED: "true"
       NGINX_UI_LOGROTATE_INTERVAL: "1440"
     volumes:
-      - ./data/nginx:/etc/nginx
-      - ./data/nginx-ui:/etc/nginx-ui
-      - ./data/letsencrypt:/etc/letsencrypt
-      - ./data/certbot-webroot:/var/www/certbot
-      - ./data/logs/nginx:/var/log/nginx
-    ports:
-      - "${HTTP_PORT}:80/tcp"
-      - "${HTTPS_PORT}:443/tcp"
-    networks:
-      - gateway
+      - ./data/gateway/nginx:/etc/nginx
+      - ./data/gateway/nginx-ui:/etc/nginx-ui
+      - ./data/gateway/certificates:/etc/letsencrypt:ro
+      - ./data/gateway/acme:/var/www/certbot:ro
+      - ./data/gateway/logs:/var/log/nginx
+    ports: ["80:80", "443:443"]
+    networks: [gateway]
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9000/healthz || exit 1"]
-      interval: 15s
+      interval: 10s
       timeout: 5s
-      retries: 20
+      retries: 12
       start_period: 30s
-    logging:
-      driver: local
-      options:
-        max-size: 20m
-        max-file: "5"
+    logging: *logging
 
-  gost:
-    image: ${GOST_IMAGE}
-    container_name: xiaoruru-gost
+  xui:
+    profiles: [vpn]
+    image: ${XUI_IMAGE}
     restart: unless-stopped
     init: true
     depends_on:
-      nginx-ui:
-        condition: service_healthy
-    entrypoint: ["/bin/sh", "/opt/xiaoruru/gost-entrypoint.sh"]
+      nginx-ui: {condition: service_healthy}
+    cap_add: [NET_ADMIN, NET_RAW]
     environment:
-      GOST_DOMAIN: ${GOST_DOMAIN}
-      CERT_NAME: ${CERT_NAME}
-      GOST_USERNAME: ${GOST_USERNAME}
-      GOST_PASSWORD: ${GOST_PASSWORD}
-      GOST_PORT: ${GOST_PORT}
-      GOST_LOGGER_LEVEL: info
+      TZ: Asia/Shanghai
+      XUI_DB_FOLDER: /etc/x-ui
+      XUI_LOG_FOLDER: /var/log/x-ui
+      XUI_PORT: "2053"
+      XUI_INIT_WEB_BASE_PATH: /
+      XUI_MEMORY_LIMIT: "400"
+      XUI_ENABLE_FAIL2BAN: "true"
     volumes:
-      - ./config/gost/gost.yml.template:/etc/gost/gost.yml.template:ro
-      - ./scripts/gost-entrypoint.sh:/opt/xiaoruru/gost-entrypoint.sh:ro
-      - ./data/letsencrypt:/etc/letsencrypt:ro
-    ports:
-      - "${GOST_PORT}:${GOST_PORT}/tcp"
-    networks:
-      - gateway
-    read_only: true
-    tmpfs:
-      - /run
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: local
-      options:
-        max-size: 20m
-        max-file: "5"
+      - ./data/vpn/xui:/etc/x-ui
+      - ./data/vpn/logs:/var/log/x-ui
+      - ./data/gateway/certificates:/etc/letsencrypt:ro
+    ports: ["8443:8443/tcp", "8443:8443/udp"]
+    networks: [gateway]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:2053/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging: *logging
 
-  rurublog:
-    image: ${BLOG_IMAGE:-xiaoruru/rurublog:local}
-    build:
-      context: ./xiaoruru-blog
-      target: ${BLOG_BUILD_TARGET:-runtime}
-    container_name: xiaoruru-rurublog
+  gost:
+    profiles: [proxy]
+    image: ${GOST_IMAGE}
     restart: unless-stopped
     init: true
-    user: "${BLOG_UID:-10001}:${BLOG_GID:-10001}"
+    depends_on:
+      nginx-ui: {condition: service_healthy}
+    command: ["-C", "/etc/gost/config.json"]
+    volumes:
+      - ./data/vpn/gost/config.json:/etc/gost/config.json:ro
+      - ./data/gateway/certificates:/etc/letsencrypt:ro
+    ports: ["9443:9443"]
+    networks: [gateway]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+
+  rurublog:
+    profiles: [blog]
+    image: ${BLOG_IMAGE}
+    build:
+      context: ./apps/blog
+      target: runtime
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    depends_on:
+      nginx-ui: {condition: service_healthy}
     environment:
-      TZ: ${TZ}
+      TZ: Asia/Shanghai
       BLOG_DATA_DIR: /data
-      SERVER_PORT: "8080"
-      BLOG_PUBLIC_URL: https://${BLOG_DOMAIN:-xiaoruru.beer}
+      BLOG_PUBLIC_URL: https://${BLOG_DOMAIN}
       BLOG_COOKIE_SECURE: "true"
       SERVER_TOMCAT_THREADS_MAX: "32"
       SERVER_TOMCAT_THREADS_MIN_SPARE: "4"
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
       SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
-      JAVA_TOOL_OPTIONS: "${BLOG_JAVA_OPTIONS:--Xms64m -Xmx320m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=64m -Xss512k -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:+ExitOnOutOfMemoryError}"
     volumes:
       - type: bind
-        source: ./config/rurublog
+        source: ./data/blog/config
         target: /app/config
         read_only: true
-        bind:
-          create_host_path: false
+        bind: {create_host_path: false}
       - type: bind
-        source: ./data/rurublog
+        source: ./data/blog/runtime
         target: /data
-        bind:
-          create_host_path: false
-    expose:
-      - "8080/tcp"
-    networks:
-      - gateway
+        bind: {create_host_path: false}
+    networks: [gateway]
     read_only: true
-    tmpfs:
-      - /tmp:size=64m,mode=1777
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    mem_limit: ${BLOG_MEMORY_LIMIT:-768m}
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
     mem_reservation: 256m
-    cpus: "${BLOG_CPUS:-1.0}"
+    cpus: "1.0"
     pids_limit: 128
     stop_grace_period: 30s
-    logging:
-      driver: local
-      options:
-        max-size: 10m
-        max-file: "3"
+    logging: *logging
 
   certbot:
+    profiles: [tools]
     image: ${CERTBOT_IMAGE}
-    container_name: xiaoruru-certbot
-    profiles: ["ops"]
-    environment:
-      TZ: ${TZ}
     volumes:
-      - ./data/letsencrypt:/etc/letsencrypt
-      - ./data/certbot-webroot:/var/www/certbot
-    networks:
-      - gateway
+      - ./data/gateway/certificates:/etc/letsencrypt
+      - ./data/gateway/acme:/var/www/certbot
+      - ./data/gateway/certbot-logs:/var/log/letsencrypt
+    networks: [gateway]
 
   panel-init:
+    profiles: [tools]
     image: ${PANEL_INIT_IMAGE}
-    profiles: ["ops"]
-    init: true
-    depends_on:
-      xui:
-        condition: service_healthy
     environment:
-      XUI_DOMAIN: ${XUI_DOMAIN}
-      CERT_NAME: ${CERT_NAME}
+      XUI_DOMAIN: ${VPN_DOMAIN}
+      CERT_NAME: xiaoruru-services
       DOCKER_SUBNET: ${DOCKER_SUBNET}
-      XUI_PANEL_PORT: ${XUI_PANEL_PORT}
-      XUI_SUB_PORT: ${XUI_SUB_PORT}
-      XUI_WEB_BASE_PATH: ${XUI_WEB_BASE_PATH}
-      XUI_ADMIN_USERNAME: ${XUI_ADMIN_USERNAME}
-      XUI_ADMIN_PASSWORD: ${XUI_ADMIN_PASSWORD}
-      XRAY_PORT: ${XRAY_PORT}
-      PRIMARY_CLIENT_EMAIL: ${PRIMARY_CLIENT_EMAIL}
-      REALITY_MIN_CLIENT_VER: ${REALITY_MIN_CLIENT_VER}
-      REALITY_TARGET_CANDIDATES: ${REALITY_TARGET_CANDIDATES}
-      TZ: ${TZ}
+      XUI_PANEL_PORT: "2053"
+      XUI_SUB_PORT: "2096"
+      XUI_WEB_BASE_PATH: /
+      XUI_ADMIN_USERNAME: ${VPN_USERNAME}
+      XUI_ADMIN_PASSWORD: ${VPN_PASSWORD}
+      XRAY_PORT: "8443"
+      PRIMARY_CLIENT_EMAIL: main
+      REALITY_MIN_CLIENT_VER: "1.0.0"
+      TZ: Asia/Shanghai
       PYTHONDONTWRITEBYTECODE: "1"
-    command: ["python3", "/opt/xiaoruru/init-panel.py"]
+    command: ["python3", "/opt/init-panel.py"]
     volumes:
-      - ./scripts/init-panel.py:/opt/xiaoruru/init-panel.py:ro
-      - ./data/bootstrap-output:/output
-    networks:
-      - gateway
+      - ./manager/runtime/init-panel.py:/opt/init-panel.py:ro
+      - ./data/vpn/output:/output
+    networks: [gateway]
     read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
 
 networks:
   gateway:

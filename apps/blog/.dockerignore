@@ -1,0 +1,11 @@
+# Allowlist: never send secrets, user data, IDE state, or QA artifacts to Docker.
+**
+!Dockerfile
+!pom.xml
+!src/
+!src/**
+!container/
+!container/entrypoint.sh
+!container/healthcheck.sh
+!target/
+!target/rurublog.jar
