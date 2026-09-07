@@ -123,6 +123,85 @@ class StorageTest(unittest.TestCase):
 
 
 class LifecycleTest(unittest.TestCase):
+    def test_swap_policy_matches_enabled_workload(self):
+        self.assertEqual(2048, Runtime.recommended_swap_mib(1024, ["blog"]))
+        self.assertEqual(1024, Runtime.recommended_swap_mib(3072, ["cpa"]))
+        self.assertEqual(0, Runtime.recommended_swap_mib(4096, ["blog", "cpa"]))
+        self.assertEqual(1024, Runtime.recommended_swap_mib(1024, ["vpn"]))
+        self.assertEqual(0, Runtime.recommended_swap_mib(1536, ["vpn"]))
+
+    def test_existing_swap_is_never_modified(self):
+        with fixture() as (_, runtime), tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            meminfo = root / "meminfo"
+            meminfo.write_text("MemTotal:        1048576 kB\nSwapTotal:        524288 kB\n")
+            with patch("manager.runtime.sys.platform", "linux"), patch("manager.runtime.run") as execute_command:
+                runtime.ensure_swap(meminfo, root / "fstab", root / "swapfile")
+            execute_command.assert_not_called()
+            self.assertFalse((root / "swapfile").exists())
+
+    def test_low_memory_creates_persistent_swap_once(self):
+        with fixture() as (_, runtime), tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            meminfo = root / "meminfo"
+            fstab = root / "fstab"
+            swapfile = root / "swapfile"
+            meminfo.write_text("MemTotal:        1048576 kB\nSwapTotal:             0 kB\n")
+            fstab.write_text("# test fstab\n")
+
+            def command(args, **kwargs):
+                if args[0] in ("fallocate", "dd"):
+                    swapfile.write_bytes(b"swap")
+                output = f"{swapfile}\n" if args[:2] == ["swapon", "--show=NAME"] else ""
+                return subprocess.CompletedProcess(args, 0, stdout=output, stderr="")
+
+            disk = shutil._ntuple_diskusage(10 << 30, 1 << 30, 9 << 30)
+            with patch("manager.runtime.sys.platform", "linux"), \
+                    patch("manager.runtime.os.geteuid", return_value=0), \
+                    patch("manager.runtime.shutil.which", return_value="/usr/bin/tool"), \
+                    patch("manager.runtime.shutil.disk_usage", return_value=disk), \
+                    patch("manager.runtime.run", side_effect=command) as execute_command:
+                runtime.ensure_swap(meminfo, fstab, swapfile)
+            self.assertEqual(0o600, swapfile.stat().st_mode & 0o777)
+            self.assertEqual(1, fstab.read_text().count(f"{swapfile} none swap sw 0 0"))
+            commands = [call.args[0][0] for call in execute_command.call_args_list]
+            self.assertIn("mkswap", commands)
+            self.assertIn("swapon", commands)
+
+    def test_inactive_swapfile_is_not_overwritten(self):
+        with fixture() as (_, runtime), tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            meminfo = root / "meminfo"
+            meminfo.write_text("MemTotal:        1048576 kB\nSwapTotal:             0 kB\n")
+            (root / "swapfile").write_text("keep me")
+            with patch("manager.runtime.sys.platform", "linux"), \
+                    patch("manager.runtime.os.geteuid", return_value=0), \
+                    self.assertRaisesRegex(StackError, "避免覆盖"):
+                runtime.ensure_swap(meminfo, root / "fstab", root / "swapfile")
+            self.assertEqual("keep me", (root / "swapfile").read_text())
+
+    def test_deploy_builds_missing_blog_and_runs_final_checks(self):
+        with fixture() as (store, _):
+            runtime = Mock()
+            runtime.config = store.load()
+            runtime.image_exists.return_value = False
+            with patch("manager.__main__.Runtime", return_value=runtime):
+                execute(argparse.Namespace(command="deploy", module=None, config=None, yes=False), store)
+            runtime.preflight.assert_called_once_with()
+            runtime.check_timer_support.assert_called_once_with()
+            runtime.build_blog.assert_called_once_with()
+            runtime.start.assert_called_once()
+            self.assertEqual("all", runtime.start.call_args.args[0])
+            runtime.verify_deployment.assert_called_once_with()
+            runtime.install_timer.assert_called_once_with()
+            runtime.doctor.assert_called_once_with()
+
+    def test_deploy_rejects_module_without_changing_runtime(self):
+        with fixture() as (store, _), patch("manager.__main__.Runtime") as runtime:
+            with self.assertRaisesRegex(StackError, "不接功能名"):
+                execute(argparse.Namespace(command="deploy", module="blog", config=None, yes=False), store)
+            runtime.assert_not_called()
+
     def test_blog_starts_gateway_without_cpa(self):
         with fixture() as (_, runtime):
             runtime.gateway = Mock()
@@ -359,6 +438,17 @@ class LifecycleTest(unittest.TestCase):
             runtime.restart("all")
             runtime.compose.assert_called_once_with("restart", "nginx-ui")
             runtime.up.assert_called_once_with(["nginx-ui"])
+
+    def test_systemd_working_directory_is_not_quoted(self):
+        with fixture() as (_, runtime), patch("manager.runtime.sys.platform", "linux"), \
+                patch("manager.runtime.os.geteuid", return_value=0), \
+                patch("manager.runtime.shutil.which", return_value="/usr/bin/systemctl"), \
+                patch("manager.runtime.Path.is_dir", return_value=True), \
+                patch("manager.runtime.write") as write_file, patch("manager.runtime.run"):
+            runtime.install_timer()
+            service = write_file.call_args_list[0].args[1]
+            self.assertIn(f"WorkingDirectory={runtime.root}\n", service)
+            self.assertNotIn(f'WorkingDirectory="{runtime.root}"', service)
 
 
 @unittest.skipUnless(shutil.which("docker"), "Docker Compose CLI is not installed")

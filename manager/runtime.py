@@ -80,8 +80,108 @@ class Runtime:
             raise StackError("需要 Docker Compose 2.24.4 或更高版本，以支持 CPA 的 !reset 覆盖。")
         run(["docker", "info", "--format", "{{.ServerVersion}}"], capture=True)
         if prepare:
+            self.ensure_swap()
             self.store.prepare(self.config)
         self.compose("config", "--quiet", capture=True)
+
+    @staticmethod
+    def recommended_swap_mib(memory_mib, enabled):
+        """Return a conservative swap size for this stack, or zero when RAM is sufficient."""
+        if set(enabled) & {"cpa", "blog"}:
+            if memory_mib < 2048:
+                return 2048
+            if memory_mib < 4096:
+                return 1024
+            return 0
+        return 1024 if memory_mib < 1536 else 0
+
+    def ensure_swap(self, meminfo=Path("/proc/meminfo"), fstab=Path("/etc/fstab"),
+                    swapfile=Path("/swapfile")):
+        """Create a persistent swap file only when Linux has no active swap and RAM is low."""
+        if sys.platform != "linux":
+            return
+        try:
+            values = {}
+            for line in safe_path(meminfo).read_text().splitlines():
+                match = re.fullmatch(r"(MemTotal|SwapTotal):\s+(\d+)\s+kB", line)
+                if match:
+                    values[match.group(1)] = int(match.group(2))
+            memory_mib = values["MemTotal"] // 1024
+            swap_kib = values["SwapTotal"]
+        except (KeyError, OSError, ValueError):
+            raise StackError("无法读取 Linux 内存信息，未自动调整 Swap。")
+        if swap_kib:
+            swap_mib = max(1, swap_kib // 1024)
+            print(f"资源检查：已有 {swap_mib} MiB Swap，保持不变。")
+            return
+        wanted_mib = self.recommended_swap_mib(memory_mib, self.config["enabled"])
+        if not wanted_mib:
+            print(f"资源检查：内存 {memory_mib} MiB，无需自动创建 Swap。")
+            return
+        if os.geteuid() != 0:
+            raise StackError(
+                f"内存仅 {memory_mib} MiB 且没有 Swap；请以 root 运行，以自动创建 {wanted_mib} MiB Swap。")
+        swapfile = safe_path(swapfile)
+        fstab = safe_path(fstab)
+        if swapfile.exists():
+            raise StackError(f"检测到未启用的 {swapfile}，为避免覆盖已有文件，请先人工检查。")
+        fstab_before = fstab.read_text() if fstab.exists() else ""
+        active_lines = [line for line in fstab_before.splitlines()
+                        if line.strip() and not line.lstrip().startswith("#")]
+        if any(line.split()[0] == str(swapfile) for line in active_lines):
+            raise StackError(f"{fstab} 已包含 {swapfile} 但系统未启用它，请先人工检查。")
+        for executable in ("mkswap", "swapon"):
+            if not shutil.which(executable):
+                raise StackError(f"需要 {executable} 才能自动配置 Swap。")
+        reserve = 2 * 1024 * 1024 * 1024
+        wanted_bytes = wanted_mib * 1024 * 1024
+        if shutil.disk_usage(swapfile.parent).free < wanted_bytes + reserve:
+            raise StackError(
+                f"内存仅 {memory_mib} MiB 且没有 Swap，但磁盘不足以创建 {wanted_mib} MiB Swap并保留 2 GiB 空间。")
+        created = False
+        fstab_changed = False
+        try:
+            try:
+                descriptor = os.open(swapfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                os.close(descriptor)
+                created = True
+            except FileExistsError:
+                raise StackError(f"创建 {swapfile} 时发现路径已被占用，未覆盖该文件。")
+            if shutil.which("fallocate"):
+                result = run(["fallocate", "-l", f"{wanted_mib}M", str(swapfile)],
+                             capture=True, check=False)
+                if result.returncode:
+                    if not shutil.which("dd"):
+                        raise StackError("fallocate 创建 Swap 失败，且系统没有 dd 可供回退。")
+                    run(["dd", "if=/dev/zero", f"of={swapfile}", "bs=1M",
+                         f"count={wanted_mib}", "status=none"])
+            elif shutil.which("dd"):
+                run(["dd", "if=/dev/zero", f"of={swapfile}", "bs=1M",
+                     f"count={wanted_mib}", "status=none"])
+            else:
+                raise StackError("需要 fallocate 或 dd 才能自动创建 Swap 文件。")
+            if not swapfile.is_file() or swapfile.is_symlink():
+                raise StackError("Swap 文件创建结果异常，已停止配置。")
+            os.chmod(swapfile, 0o600)
+            run(["mkswap", str(swapfile)], capture=True)
+            ending = "" if not fstab_before or fstab_before.endswith("\n") else "\n"
+            write(fstab, fstab_before + ending + f"{swapfile} none swap sw 0 0\n", 0o644)
+            fstab_changed = True
+            run(["swapon", str(swapfile)], capture=True)
+            active = run(["swapon", "--show=NAME", "--noheadings"], capture=True).stdout.splitlines()
+            if str(swapfile) not in {line.strip() for line in active}:
+                raise StackError("Swap 文件已创建，但启用状态校验失败。")
+        except BaseException:
+            status = run(["swapon", "--show=NAME", "--noheadings"], capture=True,
+                         check=False).stdout.splitlines()
+            is_active = str(swapfile) in {line.strip() for line in status}
+            if not is_active:
+                if fstab_changed:
+                    write(fstab, fstab_before, 0o644)
+                if created and swapfile.is_file() and not swapfile.is_symlink():
+                    swapfile.unlink()
+            raise
+        print(f"资源检查：内存 {memory_mib} MiB，已创建并启用 {wanted_mib} MiB Swap。")
 
     def network(self):
         name = self.config["network"]["name"]
@@ -117,6 +217,28 @@ class Runtime:
         project = self.cpa_project if module == "cpa" else self.project
         return any(row["project"] == project and row["service"] in SERVICES[module]
                    and row.get("State") == "running" for row in self.containers())
+
+    def image_exists(self, image):
+        return run(["docker", "image", "inspect", image], capture=True, check=False).returncode == 0
+
+    def verify_deployment(self):
+        rows = self.containers()
+        incomplete = []
+        for module in ("gateway", *self.config["enabled"]):
+            expected = SERVICES[module][:]
+            if module == "vpn" and not self.config["gost"]:
+                expected.remove("gost")
+            project = self.cpa_project if module == "cpa" else self.project
+            ready = {row["service"] for row in rows if row["project"] == project
+                     and row.get("State") == "running" and "(unhealthy)" not in row.get("Status", "")}
+            missing = set(expected) - ready
+            if missing:
+                incomplete.append(f"{module}: {', '.join(sorted(missing))}")
+        if "cpa" in self.config["enabled"] and not self.cpa_ready():
+            incomplete.append("cpa: 官方初始化未完成")
+        if incomplete:
+            raise StackError("部署尚未全部就绪（" + "；".join(incomplete) + "）。可查看 status / logs 后重试 deploy。")
+        print("部署检查：所有已启用功能的容器均已运行。")
 
     def status(self):
         rows = self.containers()
@@ -446,7 +568,7 @@ class Runtime:
             print("VPN 客户端与订阅信息：data/vpn/output/access.json（私密文件）")
         elif module == "blog":
             image = self.config["images"]["blog"]
-            if run(["docker", "image", "inspect", image], capture=True, check=False).returncode:
+            if not self.image_exists(image):
                 raise StackError("博客镜像未准备好。请先执行 ./bootstrap.sh build blog，或 docker load 导入镜像。")
             self.up(["rurublog"])
         elif module == "cpa":
@@ -568,14 +690,18 @@ class Runtime:
         self.certificate(renew=True)
 
     def install_timer(self):
-        if sys.platform != "linux" or os.geteuid() != 0:
-            raise StackError("定时续期需在使用 systemd 的 Linux 服务器上以 root 执行。")
+        self.check_timer_support()
         root = str(self.root)
         if any(ch in root for ch in ('"', "\n", "%", "\\")):
             raise StackError("项目路径不能含引号、反斜线、百分号或换行。")
-        unit = f'[Unit]\nDescription=Xiaoruru certificate renewal\nAfter=docker.service\n\n[Service]\nType=oneshot\nWorkingDirectory="{root}"\nExecStart="{root}/bootstrap.sh" tools renew\n'
+        unit = f'[Unit]\nDescription=Xiaoruru certificate renewal\nAfter=docker.service\n\n[Service]\nType=oneshot\nWorkingDirectory={root}\nExecStart="{root}/bootstrap.sh" tools renew\n'
         timer = "[Unit]\nDescription=Daily Xiaoruru certificate check\n\n[Timer]\nOnCalendar=daily\nRandomizedDelaySec=2h\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n"
         write(Path("/etc/systemd/system/xiaoruru-cert-renew.service"), unit, 0o644)
         write(Path("/etc/systemd/system/xiaoruru-cert-renew.timer"), timer, 0o644)
         run(["systemctl", "daemon-reload"])
         run(["systemctl", "enable", "--now", "xiaoruru-cert-renew.timer"])
+
+    def check_timer_support(self):
+        if (sys.platform != "linux" or os.geteuid() != 0 or not shutil.which("systemctl")
+                or not Path("/run/systemd/system").is_dir()):
+            raise StackError("完整部署需要在使用 systemd 的 Linux 服务器上以 root 执行，以安装证书续期任务。")

@@ -133,7 +133,7 @@ def initialize(store, module=None, source=None):
     print("可重复执行；已有账号、数据库和 VPN 客户端不会重置。")
     if exists and config["domains"] != previous["domains"]:
         print("域名已变化：启动网关取得新证书后，执行 tools sites 对相应站点应用配置。")
-    print("下一步：./bootstrap.sh start <功能>；博客先执行 build blog 或导入镜像。")
+    print("下一步：运行 ./bootstrap.sh deploy 完整部署；也可按需 build/start 单项功能。")
 
 
 def tools_menu(runtime, action, yes_flag=False):
@@ -174,6 +174,30 @@ def execute(args, store=None):
     if command in ("init", "config"):
         with lock(store, command + " " + (module if module in SERVICES else "all")):
             initialize(store, module, args.config)
+        return
+    if command == "deploy":
+        if module is not None:
+            raise StackError("deploy 不接功能名；它会处理配置中全部已启用功能。")
+        with lock(store, "deploy all"):
+            if args.config or not store.config_path.exists():
+                initialize(store, None, args.config)
+            runtime = Runtime(store)
+            print("\n[1/5] 检查运行环境、服务器资源与部署配置")
+            runtime.preflight()
+            runtime.check_timer_support()
+            if "blog" in runtime.config["enabled"] and not runtime.image_exists(runtime.config["images"]["blog"]):
+                print("\n[2/5] 博客镜像不存在，开始构建")
+                runtime.build_blog()
+            else:
+                print("\n[2/5] 博客镜像已就绪或未启用，无需构建")
+            print("\n[3/5] 启动网关及全部已启用功能")
+            runtime.start("all", choose=choice)
+            runtime.verify_deployment()
+            print("\n[4/5] 安装或刷新证书自动续期任务")
+            runtime.install_timer()
+            print("\n[5/5] 执行最终诊断")
+            runtime.doctor()
+            print("\n部署完成。以后可重复执行 ./bootstrap.sh deploy，补齐缺失服务而不重置数据。")
         return
     if command == "update" and module == "cpa":
         raise StackError("CPA 由官方安装器管理，请运行 start cpa，在官方菜单中选择升级。")
@@ -231,9 +255,9 @@ def execute(args, store=None):
 
 
 def menu():
-    options = ["查看功能状态", "初始化／调整部署配置", "启动功能", "停止功能", "重启功能",
+    options = ["首次部署／补齐全部功能", "查看功能状态", "初始化／调整部署配置", "启动功能", "停止功能", "重启功能",
                "查看日志", "构建博客镜像", "更新网关／VPN 镜像", "临时工具"]
-    commands = ["status", "init", "start", "stop", "restart", "logs", "build", "update", "tools"]
+    commands = ["deploy", "status", "init", "start", "stop", "restart", "logs", "build", "update", "tools"]
     while True:
         selected = choice("小茹茹服务管理 · 全键盘操作", options, back_label="退出")
         if not selected:
@@ -265,10 +289,10 @@ def menu():
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description="小茹茹部署管理；不带参数进入中文交互菜单。")
-    parser.add_argument("command", nargs="?", choices=["status", "init", "config", "start", "stop",
+    parser.add_argument("command", nargs="?", choices=["deploy", "status", "init", "config", "start", "stop",
                         "restart", "logs", "doctor", "tools", "build", "update"])
     parser.add_argument("module", nargs="?", help="gateway / vpn / cpa / blog / all；tools 可接工具名")
-    parser.add_argument("--config", help="init 读取 JSON 配置文件，不启动容器")
+    parser.add_argument("--config", help="init/deploy 读取 JSON 配置文件")
     parser.add_argument("--yes", action="store_true", help="确认本地管理器的停止／更新提示；不替 CPA 安装器确认")
     args = parser.parse_args()
     try:
