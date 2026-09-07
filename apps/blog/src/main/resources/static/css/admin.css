@@ -71,7 +71,7 @@
 .editor-sidebar { padding: 28px 22px; background: var(--paper); border-left: 1px solid var(--line); }
 .editor-main label, .editor-sidebar label, .stack-form label { display: block; margin-bottom: 18px; color: var(--muted); font-size: 11px; font-weight: 550; }
 .title-input { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 6px 0 20px; margin-bottom: 26px; background: transparent; font-size: 26px; font-weight: 700; letter-spacing: -.8px; }
-.inline-fields { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 16px; }
+.inline-fields { display: grid; grid-template-columns: 150px 170px minmax(0, 1fr); gap: 16px; }
 .content-editor { min-height: 62vh; resize: vertical; padding: 20px; font-family: var(--mono); font-size: 13px; line-height: 1.9; tab-size: 4; border-radius: 10px; }
 .markdown-tools { display: flex; flex-wrap: wrap; gap: 5px; margin: -6px 0 12px; }
 .markdown-tools button { min-height: 28px; padding: 3px 9px; color: var(--muted); font-size: 10px; border-radius: 6px; }

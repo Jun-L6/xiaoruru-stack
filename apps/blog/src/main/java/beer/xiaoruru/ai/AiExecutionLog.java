@@ -26,8 +26,10 @@ public class AiExecutionLog extends BaseEntity {
     private Long outputTokens;
     @Column(name = "parse_status", nullable = false, length = 30)
     private String parseStatus;
-    @Column(name = "category_id")
-    private Long categoryId;
+    @Column(name = "category_slug", length = 100)
+    private String categorySlug;
+    @Column(name = "content_form", length = 20)
+    private String contentForm;
     private Double confidence;
     @Column(name = "result_tags", length = 500)
     private String resultTags;
@@ -57,8 +59,10 @@ public class AiExecutionLog extends BaseEntity {
     public void setOutputTokens(Long outputTokens) { this.outputTokens = outputTokens; }
     public String getParseStatus() { return parseStatus; }
     public void setParseStatus(String parseStatus) { this.parseStatus = parseStatus; }
-    public Long getCategoryId() { return categoryId; }
-    public void setCategoryId(Long categoryId) { this.categoryId = categoryId; }
+    public String getCategorySlug() { return categorySlug; }
+    public void setCategorySlug(String categorySlug) { this.categorySlug = categorySlug; }
+    public String getContentForm() { return contentForm; }
+    public void setContentForm(String contentForm) { this.contentForm = contentForm; }
     public Double getConfidence() { return confidence; }
     public void setConfidence(Double confidence) { this.confidence = confidence; }
     public String getResultTags() { return resultTags; }

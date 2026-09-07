@@ -11,6 +11,7 @@ import beer.xiaoruru.article.ArticleRepository;
 import beer.xiaoruru.article.ArticleService;
 import beer.xiaoruru.article.ClassificationStatus;
 import beer.xiaoruru.article.ContentType;
+import beer.xiaoruru.article.ContentForm;
 import beer.xiaoruru.taxonomy.CategoryRepository;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,20 +43,21 @@ class AiClassificationIntegrationTest {
 
     @Test
     void appliesHighConfidenceAndMarksMiddleConfidenceForReview() {
-        Long javaId = categories.findBySlug("java").orElseThrow().getId();
+        String categorySlug = "software-development";
         Article high = article("ai-high-confidence", false);
-        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(javaId, 0.91,
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(categorySlug, ContentForm.LONGFORM, 0.91,
                 List.of("Java", "JVM"), "主题明确", "AI 摘要", "SEO", null));
         service.requestNow(high.getId());
         service.processNext();
 
         Article applied = articles.findDetailedById(high.getId()).orElseThrow();
         assertThat(applied.getClassificationStatus()).isEqualTo(ClassificationStatus.APPLIED);
-        assertThat(applied.getCategory().getId()).isEqualTo(javaId);
+        assertThat(applied.getCategory().getSlug()).isEqualTo(categorySlug);
+        assertThat(applied.getContentForm()).isEqualTo(ContentForm.LONGFORM);
         assertThat(applied.getTags()).extracting(tag -> tag.getName()).containsExactlyInAnyOrder("Java", "JVM");
 
         Article middle = article("ai-middle-confidence", false);
-        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(javaId, 0.70,
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(categorySlug, ContentForm.NOTE, 0.70,
                 List.of("Spring", "JPA"), "需要复核", null, null, null));
         service.requestNow(middle.getId());
         service.processNext();
@@ -65,9 +67,8 @@ class AiClassificationIntegrationTest {
 
     @Test
     void lowConfidenceFallsBackToUncategorized() {
-        Long javaId = categories.findBySlug("java").orElseThrow().getId();
         Article article = article("ai-low-confidence", false);
-        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(javaId, 0.20,
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult("software-development", ContentForm.NOTE, 0.20,
                 List.of(), "无法确定", null, null, "新分类建议"));
         service.requestNow(article.getId());
         service.processNext();
@@ -77,6 +78,8 @@ class AiClassificationIntegrationTest {
         assertThat(result.getCategory().getSlug()).isEqualTo("uncategorized");
         assertThat(logs.findTop100ByOrderByCreatedAtDesc()).anySatisfy(log -> {
             assertThat(log.getJob().getArticle().getId()).isEqualTo(article.getId());
+            assertThat(log.getCategorySlug()).isEqualTo("uncategorized");
+            assertThat(log.getContentForm()).isEqualTo("NOTE");
             assertThat(log.getSuggestedCategory()).isEqualTo("新分类建议");
         });
     }
@@ -84,7 +87,7 @@ class AiClassificationIntegrationTest {
     @Test
     void invalidOutputAndTimeoutFailWithoutAutomaticRetriesOrBlockingArticle() {
         Article invalid = article("ai-invalid-output", false);
-        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(null, 2.0,
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(null, null, 2.0,
                 List.of("OnlyOne"), "bad", null, null, null));
         AiJob invalidJob = service.requestNow(invalid.getId());
         service.processNext();
@@ -108,13 +111,13 @@ class AiClassificationIntegrationTest {
 
     @Test
     void manualClassificationLockCancelsStaleAiResult() {
-        Long javaId = categories.findBySlug("java").orElseThrow().getId();
         Article article = article("ai-manual-lock", false);
         AiJob job = service.enqueue(article.getId(), article.getContentHash(), java.time.Duration.ZERO);
         articleService.save(new ArticleCommand(article.getId(), article.getTitle(), article.getSlug(),
-                article.getSummary(), article.getContentType(), article.getContent(), article.getCategory().getId(),
+                article.getSummary(), article.getContentType(), article.getContentForm(), article.getContent(), article.getCategory().getId(),
                 "Manual", false, true, "", ""));
-        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(javaId, 0.99,
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(
+                "software-development", ContentForm.LONGFORM, 0.99,
                 List.of("Java", "JVM"), "would overwrite", null, null, null));
         service.processNext();
 
@@ -172,10 +175,30 @@ class AiClassificationIntegrationTest {
         });
     }
 
+    @Test
+    void appliesShortPoeticExpressionWithoutForcingTagsOrTechnicalCategories() {
+        Article article = articleService.save(new ArticleCommand(null, "晚风", "ai-short-poem", "",
+                ContentType.TEXT, ContentForm.LONGFORM, "晚风把月光吹进了杯里。",
+                categories.findBySlug("uncategorized").orElseThrow().getId(), "",
+                false, false, "", ""));
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(
+                "snippets-poetry", ContentForm.MOMENT, 0.86, List.of(),
+                "这是无外部出处的原创式诗性短句", "晚风与月光的一瞬。", null, null));
+
+        service.requestNow(article.getId());
+        service.processNext();
+
+        Article classified = articles.findDetailedById(article.getId()).orElseThrow();
+        assertThat(classified.getCategory().getSlug()).isEqualTo("snippets-poetry");
+        assertThat(classified.getContentForm()).isEqualTo(ContentForm.MOMENT);
+        assertThat(classified.getClassificationStatus()).isEqualTo(ClassificationStatus.APPLIED);
+        assertThat(classified.getTags()).isEmpty();
+    }
+
     private Article article(String slug, boolean locked) {
         Long uncategorized = categories.findBySlug("uncategorized").orElseThrow().getId();
         return articleService.save(new ArticleCommand(null, "AI 测试 " + slug, slug, "",
-                ContentType.MARKDOWN, "# Java\n\nJVM 与 Spring 技术文章", uncategorized, "",
+                ContentType.MARKDOWN, ContentForm.LONGFORM, "# Java\n\nJVM 与 Spring 技术文章", uncategorized, "",
                 false, locked, "", ""));
     }
 }

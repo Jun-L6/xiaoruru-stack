@@ -224,10 +224,11 @@ public class AiJobService {
             executionLogs.save(execution);
             return;
         }
-        if (result == null || result.categoryId() == null
+        if (result == null || result.categorySlug() == null || result.categorySlug().isBlank()
+                || result.contentForm() == null
                 || !Double.isFinite(result.confidence())
                 || result.confidence() < 0 || result.confidence() > 1) {
-            throw new IllegalArgumentException("模型返回的分类 ID 或置信度无效");
+            throw new IllegalArgumentException("模型返回的分类、内容形态或置信度无效");
         }
         double confidence = result.confidence();
         BlogProperties.Classification thresholds = properties.ai().classification();
@@ -236,7 +237,9 @@ public class AiJobService {
             category = categories.findBySlug("uncategorized").orElseThrow();
             article.setClassificationStatus(ClassificationStatus.REVIEW);
         } else {
-            category = taxonomy.requireLeaf(result.categoryId());
+            Category selected = categories.findBySlug(result.categorySlug().strip())
+                    .orElseThrow(() -> new IllegalArgumentException("模型返回了不存在的分类 slug"));
+            category = taxonomy.requireLeaf(selected.getId());
             article.setClassificationStatus(confidence >= thresholds.reviewConfidence()
                     ? ClassificationStatus.APPLIED : ClassificationStatus.REVIEW);
             List<String> resultTags = result.tags() == null ? List.of() : result.tags();
@@ -253,6 +256,7 @@ public class AiJobService {
             article.setTags(taxonomy.resolveTags(tagText, "AI"));
         }
         article.setCategory(category);
+        article.setContentForm(result.contentForm());
         article.setClassificationSource(ClassificationSource.AI);
         article.setClassificationConfidence(confidence);
         article.setClassificationReason(clip(result.reason(), 1000));
@@ -272,7 +276,8 @@ public class AiJobService {
         AiExecutionLog execution = new AiExecutionLog(job, work.selection().profile().model(),
                 endpointIdentifier(work), elapsedMs);
         execution.setParseStatus("SUCCEEDED");
-        execution.setCategoryId(category.getId());
+        execution.setCategorySlug(category.getSlug());
+        execution.setContentForm(result.contentForm().name());
         execution.setConfidence(confidence);
         execution.setResultTags(safeResultTags(result.tags()));
         execution.setSuggestedCategory(clip(result.suggestedCategory(), 200));

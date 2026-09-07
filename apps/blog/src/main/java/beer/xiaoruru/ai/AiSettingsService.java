@@ -25,6 +25,7 @@ public class AiSettingsService {
     private final ObjectMapper mapper;
     private final Path keyPath;
     private final TransactionTemplate transactions;
+    private final BlogProperties.OpenAi yaml;
 
     public AiSettingsService(AiSettingsRepository repository, ObjectMapper mapper, BlogProperties properties,
                              PlatformTransactionManager transactionManager) {
@@ -32,12 +33,15 @@ public class AiSettingsService {
         this.mapper = mapper;
         this.keyPath = properties.dataDir().resolve("secrets/ai.key");
         this.transactions = new TransactionTemplate(transactionManager);
+        this.yaml = properties.ai().openai();
     }
 
     public record Profile(String baseUrl, String encryptedKey, String model, String completionsPath,
                           int timeoutSeconds, Double temperature) {}
     public record Document(String mode, Profile cpa, Profile external) {}
-    public record Selection(boolean enabled, Profile profile) {}
+    public record Selection(boolean enabled, Profile profile, String apiKeyOverride) {
+        @Override public String toString() { return "AiSelection[credentials=REDACTED]"; }
+    }
     public record Form(String mode, String baseUrl, String apiKey, String model, String completionsPath,
                        int timeoutSeconds, Double temperature, boolean clearKey) {
         @Override public String toString() { return "AiSettingsForm[REDACTED]"; }
@@ -55,26 +59,42 @@ public class AiSettingsService {
                 .orElseGet(() -> new Document("none", defaults(CPA_URL), defaults("https://api.example.com")));
     }
 
-    public boolean enabled() { return !document().mode().equals("none"); }
+    public boolean enabled() { return selection().enabled(); }
 
     private Profile selected(Document doc) { return doc.mode().equals("cpa") ? doc.cpa() : doc.external(); }
 
-    public Duration timeout() { return Duration.ofSeconds(selected(document()).timeoutSeconds()); }
-    public String model() { return selected(document()).model(); }
-    public String endpoint() { return selected(document()).baseUrl(); }
+    public Duration timeout() { return Duration.ofSeconds(selection().profile().timeoutSeconds()); }
+    public String model() { return selection().profile().model(); }
+    public String endpoint() { return selection().profile().baseUrl(); }
 
     public Selection selection() {
-        Document doc = document();
-        return new Selection(!doc.mode().equals("none"), selected(doc));
+        var persisted = repository.findById(1L);
+        if (persisted.isPresent()) {
+            Document doc = mapper.readValue(persisted.orElseThrow().getDocument(), Document.class);
+            return new Selection(!doc.mode().equals("none"), selected(doc), "");
+        }
+        if (yaml.enabled()) {
+            return new Selection(true, yamlProfile(), value(yaml.apiKey()));
+        }
+        return new Selection(false, defaults("https://api.example.com"), "");
     }
 
     public Map<String, Object> view() {
+        if (repository.findById(1L).isEmpty() && yaml.enabled()) {
+            Profile profile = yamlProfile();
+            return Map.of("mode", "external", "cpa", publicProfile(defaults(CPA_URL)),
+                    "external", publicProfile(profile, !value(yaml.apiKey()).isBlank()), "source", "yaml");
+        }
         Document doc = document();
         return Map.of("mode", doc.mode(), "cpa", publicProfile(doc.cpa()), "external", publicProfile(doc.external()));
     }
 
     private Map<String, Object> publicProfile(Profile profile) {
-        return Map.of("baseUrl", profile.baseUrl(), "hasKey", !profile.encryptedKey().isBlank(),
+        return publicProfile(profile, !profile.encryptedKey().isBlank());
+    }
+
+    private Map<String, Object> publicProfile(Profile profile, boolean hasKey) {
+        return Map.of("baseUrl", profile.baseUrl(), "hasKey", hasKey,
                 "model", profile.model(), "completionsPath", profile.completionsPath(),
                 "timeoutSeconds", profile.timeoutSeconds(),
                 "temperature", profile.temperature() == null ? "" : profile.temperature().toString());
@@ -115,6 +135,9 @@ public class AiSettingsService {
             if (!path.matches("/[a-zA-Z0-9/_-]+") || path.contains("//") || path.length() > 200) {
                 throw new IllegalArgumentException("调用路径格式不正确，例如 /v1/chat/completions。");
             }
+            if (!path.endsWith("/chat/completions")) {
+                throw new IllegalArgumentException("Spring AI 调用路径必须以 /chat/completions 结尾。");
+            }
             if (model.isBlank() || model.length() > 200 || model.chars().anyMatch(Character::isISOControl)) {
                 throw new IllegalArgumentException("请填写模型名称（最多 200 字符）。");
             }
@@ -149,9 +172,29 @@ public class AiSettingsService {
     public Connection connection(Selection selection) {
         if (!selection.enabled()) throw new IllegalStateException("AI 已关闭，请在后台 AI 设置中启用。");
         Profile profile = selection.profile();
+        String apiKey = value(selection.apiKeyOverride());
+        if (apiKey.isBlank()) {
+            apiKey = decrypt(profile.encryptedKey());
+        }
+        if (apiKey.isBlank() || profile.model().isBlank()) {
+            throw new IllegalStateException("AI 配置缺少 API Key 或模型名称。");
+        }
         return new Connection(URI.create(profile.baseUrl() + profile.completionsPath()),
-                decrypt(profile.encryptedKey()), profile.model(),
+                apiKey, profile.model(),
                 Duration.ofSeconds(profile.timeoutSeconds()), profile.temperature());
+    }
+
+    private Profile yamlProfile() {
+        String base = value(yaml.baseUrl()).replaceAll("/+$", "");
+        String path = value(yaml.completionsPath());
+        if (base.isBlank() || path.isBlank() || !path.endsWith("/chat/completions")) {
+            throw new IllegalStateException("YAML 中的 AI 地址或调用路径不正确。");
+        }
+        long seconds = yaml.timeout().toSeconds();
+        if (seconds < 1 || seconds > 300) {
+            throw new IllegalStateException("YAML 中的 AI 超时必须在 1 至 300 秒之间。");
+        }
+        return new Profile(base, "", value(yaml.model()), path, (int) seconds, yaml.temperature());
     }
 
     private String encrypt(String value) { return crypt(value, true); }

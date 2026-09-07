@@ -5,7 +5,7 @@
 <header th:replace="~{fragments/admin :: header}"></header>
 <main class="admin-shell">
     <div th:replace="~{fragments/admin :: flash}"></div>
-    <div class="admin-title"><div><p class="eyebrow">TAXONOMY</p><h1>分类</h1></div></div>
+    <div class="admin-title"><div><p class="eyebrow">TAXONOMY</p><h1>分类</h1><p class="muted">分类表达文章的主要主题；细节交给标签，呈现方式交给内容形态。</p></div></div>
     <div class="dashboard-grid taxonomy-layout">
         <section class="panel"><h2>现有分类</h2><p class="muted">一级分类没有子分类时可以直接用于文章；存在子分类后只能选择其叶子分类。</p>
             <div class="taxonomy-card" th:each="category : ${categories}" th:classappend="${category.parent != null ? 'child' : 'root'}">
@@ -20,7 +20,9 @@
                         <label>Slug<input name="slug" required maxlength="100" pattern="[a-z0-9_-]+" th:value="${category.slug}" th:readonly="${category.systemCategory}"></label>
                         <label>排序<input name="sortOrder" type="number" min="-10000" max="10000" th:value="${category.sortOrder}"></label>
                         <label>展示说明<textarea name="description" rows="2" maxlength="500" th:text="${category.description}"></textarea></label>
-                        <label>AI 分类边界<textarea name="aiDescription" rows="3" maxlength="1000" th:text="${category.aiDescription}"></textarea></label>
+                        <label>AI 应归入<textarea name="aiDescription" rows="3" maxlength="1000" th:text="${category.aiDescription}"></textarea></label>
+                        <label>AI 不应归入<textarea name="aiExclusions" rows="3" maxlength="1000" th:text="${category.aiExclusions}"></textarea></label>
+                        <label>AI 示例<textarea name="aiExamples" rows="3" maxlength="2000" th:text="${category.aiExamples}"></textarea></label>
                         <label>AI 关键词<input name="aiKeywords" maxlength="1000" th:value="${category.aiKeywords}"></label>
                         <button class="primary" type="submit">保存修改</button>
                     </form>
@@ -37,7 +39,9 @@
                 <label>Slug<input name="slug" required maxlength="100" pattern="[a-z0-9_-]+"></label>
                 <label>父分类<select name="parentId"><option value="">一级分类</option><option th:each="category : ${categories}" th:if="${category.parent == null && !category.systemCategory}" th:value="${category.id}" th:text="${category.name}"></option></select></label>
                 <label>展示说明<textarea name="description" rows="2" maxlength="500"></textarea></label>
-                <label>AI 分类边界<textarea name="aiDescription" rows="3" maxlength="1000"></textarea></label>
+                <label>AI 应归入<textarea name="aiDescription" rows="3" maxlength="1000"></textarea></label>
+                <label>AI 不应归入<textarea name="aiExclusions" rows="3" maxlength="1000"></textarea></label>
+                <label>AI 示例<textarea name="aiExamples" rows="3" maxlength="2000"></textarea></label>
                 <label>AI 关键词<input name="aiKeywords" maxlength="1000"></label>
                 <button class="primary" type="submit">创建分类</button>
             </form>

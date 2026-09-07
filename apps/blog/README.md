@@ -1,6 +1,8 @@
 # 小茹茹博客
 
-Java 21 / Spring Boot 应用，提供 Markdown 与 HTML 文章、分类、标签、媒体、全文检索、后台管理、备份和可选的 AI 分类。
+Java 21 / Spring Boot 单体应用，用来记录日常、技术、思考、阅读和任何值得留下的内容。提供 Markdown、HTML 与纯文本文章、分类、标签、媒体、搜索、后台管理、本地备份和 AI 自动整理。
+
+文章使用三个互相独立的维度：一个叶子分类表示主要主题，一个内容形态表示阅读方式，0–5 个标签记录具体人物、地点、技术或关键词。完整规则见 [内容模型与 AI 分类](docs/内容模型与AI分类.md)。
 
 ## 部署
 
@@ -16,9 +18,11 @@ Java 21 / Spring Boot 应用，提供 Markdown 与 HTML 文章、分类、标签
 - 使用 CPA：固定内网根地址 `http://cli-proxy-api:8317`；填写普通 API Key 和模型。
 - 外部模型：填写 OpenAI-compatible 根地址、调用路径、API Key、模型、超时以及可选 Temperature。
 
+开发时可以直接编辑 `src/main/resources/application.yml` 中的 `blog.ai.openai`；部署时实际配置位于仓库根目录的 `data/blog/config/application.yml`，也可通过环境变量注入。设置 `enabled: true` 并配置 `base-url`、`api-key`、`model` 后即可使用；后台一旦保存过 AI 设置，将以数据库中的后台设置为准。
+
 保存不联网验证，对后续调用生效。两个接口的配置分别保存；切换外部地址必须重新填写密钥。密钥不回显，使用 AES-GCM 加密存入数据库，加密密钥位于数据目录的 `secrets/ai.key`。
 
-AI 分类在后台执行。请求失败会记录错误，可手动重试，不会阻塞文章保存。模型分类输出格式错误时最多发起一次 JSON 修复请求；不做服务可用性监控或接口自动切换。
+AI 调用基于 Spring AI 2，分类在后台执行。请求失败会记录错误，可手动重试，不会阻塞文章保存或发布。模型输出语义化分类 slug、内容形态和可选标签；格式错误时最多发起一次 JSON 修复请求。分类体系由站点维护，AI 只能建议新分类，不能自行创建。
 
 ## 开发
 

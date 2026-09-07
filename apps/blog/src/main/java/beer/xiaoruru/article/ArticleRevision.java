@@ -27,6 +27,10 @@ public class ArticleRevision extends BaseEntity {
     @Column(name = "content_type", nullable = false, length = 20)
     private ContentType contentType;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "content_form", nullable = false, length = 20)
+    private ContentForm contentForm;
+
     @Column(nullable = false, length = 30)
     private String reason;
 
@@ -37,6 +41,7 @@ public class ArticleRevision extends BaseEntity {
         this.title = article.getTitle();
         this.content = article.getContent();
         this.contentType = article.getContentType();
+        this.contentForm = article.getContentForm();
         this.reason = reason;
     }
 }

@@ -6,24 +6,25 @@
 <main class="page-shell home-shell">
     <section class="intro">
         <div class="intro-copy">
-            <p class="eyebrow"><span class="tiny-dot"></span> A DEVELOPER'S NOTEBOOK</p>
-            <h1>写代码，<br>也写下<span class="accent-word">思考。</span></h1>
-            <p class="intro-description" th:text="${site['site.subtitle']}">记录软件开发与计算机技术</p>
+            <p class="eyebrow"><span class="tiny-dot"></span> A PERSONAL NOTEBOOK</p>
+            <h1>写下日常，<br>也收藏<span class="accent-word">喜欢。</span></h1>
+            <p class="intro-description" th:text="${site['site.subtitle']}">记录日常、技术、思考与喜欢的事</p>
             <div class="intro-actions"><a class="button primary" href="#latest">开始阅读 <svg th:replace="~{fragments/icons :: icon('arrow')}"></svg></a><a class="text-link" th:href="@{/about}">关于这个博客 <span aria-hidden="true">↗</span></a></div>
-            <p class="intro-footnote">SOFTWARE · SYSTEMS · LITTLE DISCOVERIES</p>
+            <p class="intro-footnote">LIFE · IDEAS · THINGS WORTH KEEPING</p>
         </div>
         <div class="notebook-art" aria-hidden="true">
             <div class="art-orbit"></div><span class="art-cross">+</span>
             <div class="note-sheet note-sheet-back"><span>IDEAS, IN PROGRESS.</span></div>
-            <div class="note-sheet code-note"><div class="note-top"><span class="note-dots">● ● ●</span><span>notes / curiosity.java</span><span>↗</span></div><div class="note-code"><span class="code-comment">// a little better, every day</span><br><span class="code-keyword">while</span> (curious) {<br>&nbsp;&nbsp;learn();<br>&nbsp;&nbsp;build();<br>&nbsp;&nbsp;<span class="code-highlight">share();</span><br>}</div><div class="note-bottom"><span class="tiny-dot"></span> 把探索，写成笔记 <span>↗</span></div></div>
+            <div class="note-sheet code-note"><div class="note-top"><span class="note-dots">● ● ●</span><span>notes / today.md</span><span>↗</span></div><div class="note-code"><span class="code-comment">A small page from an ordinary day.</span><br><span class="code-keyword">08:20</span> 咖啡与一场雨<br><span class="code-keyword">14:30</span> 新学会的一件事<br><span class="code-keyword">23:10</span> <span class="code-highlight">值得留下的念头</span></div><div class="note-bottom"><span class="tiny-dot"></span> 认真生活，随手记录 <span>↗</span></div></div>
             <div class="art-label"><svg th:replace="~{fragments/icons :: icon('spark')}"></svg> Stay curious.</div>
         </div>
     </section>
     <div class="section-heading" id="latest"><div><p class="eyebrow">THE LATEST</p><h2>最近的记录 <span class="count-badge" th:text="${page.totalElements}">0</span></h2></div><a class="text-link" th:href="@{/archives}">全部归档 <svg th:replace="~{fragments/icons :: icon('arrow')}"></svg></a></div>
     <section class="article-list" aria-label="文章列表">
-        <article class="article-card" th:each="article : ${page.content}">
+        <article class="article-card" th:each="article : ${page.content}" th:classappend="${'form-' + article.contentForm.name().toLowerCase()}">
             <div class="article-card-body"><p class="article-meta">
                 <span th:if="${article.pinned}" class="pin">置顶</span>
+                <span class="form-badge" th:text="${article.contentForm.label}">长文</span>
                 <time th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd')}">2026-08-31</time>
                 <a th:href="@{/categories/{slug}(slug=${article.category.slug})}" th:text="${article.category.pathName}">分类</a>
             </p>
@@ -34,7 +35,7 @@
             </div></div><a class="article-arrow" th:href="@{/posts/{slug}(slug=${article.slug})}" th:attr="aria-label='阅读：' + ${article.title}"><svg th:replace="~{fragments/icons :: icon('external')}"></svg></a>
         </article>
         <div class="empty-state" th:if="${page.empty}">
-            <span class="empty-icon"><svg th:replace="~{fragments/icons :: icon('book')}"></svg></span><h3>好内容，正在酝酿。</h3><p>这里将收录技术探索、实践心得与灵感笔记。</p><a class="text-link" th:href="@{/categories}">先逛逛知识分类 →</a>
+            <span class="empty-icon"><svg th:replace="~{fragments/icons :: icon('book')}"></svg></span><h3>第一页，还在等一句开场。</h3><p>日常、技术、思考或喜欢的文字，都可以从这里开始。</p><a class="text-link" th:href="@{/categories}">看看内容分类 →</a>
         </div>
     </section>
     <nav class="pagination" th:if="${page.totalPages > 1}" aria-label="分页">

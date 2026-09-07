@@ -16,6 +16,7 @@ import beer.xiaoruru.article.ArticleCommand;
 import beer.xiaoruru.article.ArticleService;
 import beer.xiaoruru.article.ArticleRepository;
 import beer.xiaoruru.article.ContentType;
+import beer.xiaoruru.article.ContentForm;
 import beer.xiaoruru.taxonomy.Category;
 import beer.xiaoruru.taxonomy.CategoryRepository;
 import beer.xiaoruru.taxonomy.TagRepository;
@@ -47,16 +48,17 @@ class BlogIntegrationTest {
                 .andExpect(view().name("site/index"));
         mvc.perform(get("/categories"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("计算机基础")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("技术与创造")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("生活与见闻")));
         mvc.perform(get("/admin"))
                 .andExpect(status().is3xxRedirection());
     }
 
     @Test
     void savesPublishesAndDisplaysMarkdownArticle() throws Exception {
-        Long categoryId = categories.findBySlug("java").orElseThrow().getId();
+        Long categoryId = categories.findBySlug("software-development").orElseThrow().getId();
         Article article = articleService.save(new ArticleCommand(null, "JVM 字节码入门", "jvm-bytecode-test", "",
-                ContentType.MARKDOWN, "# JVM\n\n```java\nclass Demo {}\n```", categoryId,
+                ContentType.MARKDOWN, ContentForm.LONGFORM, "# JVM\n\n```java\nclass Demo {}\n```", categoryId,
                 "Java, JVM", false, true, "", ""));
         articleService.publish(article.getId());
 
@@ -91,9 +93,9 @@ class BlogIntegrationTest {
 
     @Test
     void existingArticleEditorLoadsDetailedRelationships() throws Exception {
-        Long categoryId = categories.findBySlug("c-cpp").orElseThrow().getId();
+        Long categoryId = categories.findBySlug("software-development").orElseThrow().getId();
         Article article = articleService.save(new ArticleCommand(null, "编辑关系测试", "editor-relations-test", "",
-                ContentType.MARKDOWN, "# 内容", categoryId, "C++, ABI", false, true, "", ""));
+                ContentType.MARKDOWN, ContentForm.NOTE, "# 内容", categoryId, "C++, ABI", false, true, "", ""));
 
         mvc.perform(get("/admin/articles/" + article.getId()).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
@@ -103,22 +105,44 @@ class BlogIntegrationTest {
     }
 
     @Test
+    void manualCategoryOrContentFormOnNewArticleLocksAiClassification() {
+        Long categoryId = categories.findBySlug("daily-moments").orElseThrow().getId();
+        Article categorized = articleService.save(new ArticleCommand(null, "周末小记", "weekend-note-test", "",
+                ContentType.TEXT, ContentForm.LONGFORM, "今天去公园散步。", categoryId,
+                "", false, false, "", ""));
+        Long uncategorizedId = categories.findBySlug("uncategorized").orElseThrow().getId();
+        Article shaped = articleService.save(new ArticleCommand(null, "一瞬", "moment-form-test", "",
+                ContentType.TEXT, ContentForm.MOMENT, "风吹过。", uncategorizedId,
+                "", false, false, "", ""));
+
+        assertThat(categorized.isClassificationLocked()).isTrue();
+        assertThat(categorized.getClassificationSource().name()).isEqualTo("MANUAL");
+        assertThat(shaped.isClassificationLocked()).isTrue();
+        assertThat(shaped.getClassificationSource().name()).isEqualTo("MANUAL");
+    }
+
+    @Test
     void standaloneRootIsLeafButCategoryDepthIsLimitedToTwoLevels() {
-        Category standalone = taxonomy.createCategory("独立分类测试", "standalone-root-test", null, "", "", "");
+        Category standalone = taxonomy.createCategory("独立分类测试", "standalone-root-test", null,
+                "", "", "", "", "");
         assertThat(taxonomy.requireLeaf(standalone.getId()).getId()).isEqualTo(standalone.getId());
 
-        Category root = taxonomy.createCategory("层级根测试", "hierarchy-root-test", null, "", "", "");
-        Category child = taxonomy.createCategory("层级子测试", "hierarchy-child-test", root.getId(), "", "", "");
+        Category root = taxonomy.createCategory("层级根测试", "hierarchy-root-test", null,
+                "", "", "", "", "");
+        Category child = taxonomy.createCategory("层级子测试", "hierarchy-child-test", root.getId(),
+                "", "", "", "", "");
         assertThatThrownBy(() -> taxonomy.requireLeaf(root.getId())).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> taxonomy.createCategory("第三级", "hierarchy-third-test", child.getId(), "", "", ""))
+        assertThatThrownBy(() -> taxonomy.createCategory("第三级", "hierarchy-third-test", child.getId(),
+                "", "", "", "", ""))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void tagsCanBeRenamedAndMergedWithoutLosingArticleLinks() {
-        Long categoryId = categories.findBySlug("assembly").orElseThrow().getId();
+        Long categoryId = categories.findBySlug("software-development").orElseThrow().getId();
         Article article = articleService.save(new ArticleCommand(null, "标签合并测试", "tag-merge-test", "",
-                ContentType.TEXT, "标签合并正文", categoryId, "MergeSource, MergeTarget", false, true, "", ""));
+                ContentType.TEXT, ContentForm.NOTE, "标签合并正文", categoryId,
+                "MergeSource, MergeTarget", false, true, "", ""));
         var source = tags.findByNormalizedName("mergesource").orElseThrow();
         var target = tags.findByNormalizedName("mergetarget").orElseThrow();
 

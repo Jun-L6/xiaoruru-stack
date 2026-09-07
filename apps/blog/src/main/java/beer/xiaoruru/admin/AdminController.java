@@ -9,6 +9,7 @@ import beer.xiaoruru.article.ArticleRepository;
 import beer.xiaoruru.article.ArticleService;
 import beer.xiaoruru.article.ArticleStatus;
 import beer.xiaoruru.article.ContentType;
+import beer.xiaoruru.article.ContentForm;
 import beer.xiaoruru.article.ClassificationStatus;
 import beer.xiaoruru.backup.BackupStatus;
 import beer.xiaoruru.backup.BackupRecordRepository;
@@ -96,6 +97,7 @@ public class AdminController {
     public String articleList(@RequestParam(defaultValue = "") String q,
             @RequestParam(required = false) ArticleStatus status,
             @RequestParam(required = false) ContentType contentType,
+            @RequestParam(required = false) ContentForm contentForm,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) Long tagId,
             @RequestParam(required = false) ClassificationStatus classificationStatus,
@@ -104,16 +106,18 @@ public class AdminController {
         ZoneId zone = ZoneId.systemDefault();
         Instant from = publishedFrom == null ? null : publishedFrom.atStartOfDay(zone).toInstant();
         Instant until = publishedTo == null ? null : publishedTo.plusDays(1).atStartOfDay(zone).toInstant();
-        model.addAttribute("articles", articles.filterForAdmin(q.strip(), status, contentType, categoryId,
+        model.addAttribute("articles", articles.filterForAdmin(q.strip(), status, contentType, contentForm, categoryId,
                 tagId, classificationStatus, from, until));
         model.addAttribute("categories", categories.findAllByOrderBySortOrderAscNameAsc());
         model.addAttribute("tags", tags.findAllSorted());
         model.addAttribute("statuses", ArticleStatus.values());
         model.addAttribute("contentTypes", ContentType.values());
+        model.addAttribute("contentForms", ContentForm.values());
         model.addAttribute("classificationStatuses", ClassificationStatus.values());
         model.addAttribute("q", q.strip());
         model.addAttribute("selectedStatus", status);
         model.addAttribute("selectedContentType", contentType);
+        model.addAttribute("selectedContentForm", contentForm);
         model.addAttribute("selectedCategoryId", categoryId);
         model.addAttribute("selectedTagId", tagId);
         model.addAttribute("selectedClassificationStatus", classificationStatus);
@@ -153,7 +157,7 @@ public class AdminController {
     public String newArticle(Model model) {
         Long uncategorized = categories.findBySlug("uncategorized").orElseThrow().getId();
         model.addAttribute("articleForm", new ArticleCommand(null, "", "", "", ContentType.MARKDOWN,
-                "# 新文章\n\n从这里开始写作。", uncategorized, "", false, false, "", ""));
+                ContentForm.LONGFORM, "# 新文章\n\n从这里开始写作。", uncategorized, "", false, false, "", ""));
         addEditorModel(model, null);
         return "admin/article-edit";
     }
@@ -233,9 +237,11 @@ public class AdminController {
     public String createCategory(@RequestParam String name, @RequestParam String slug,
             @RequestParam(required = false) Long parentId, @RequestParam(defaultValue = "") String description,
             @RequestParam(defaultValue = "") String aiDescription,
+            @RequestParam(defaultValue = "") String aiExclusions,
+            @RequestParam(defaultValue = "") String aiExamples,
             @RequestParam(defaultValue = "") String aiKeywords, RedirectAttributes redirect) {
         try {
-            taxonomy.createCategory(name, slug, parentId, description, aiDescription, aiKeywords);
+            taxonomy.createCategory(name, slug, parentId, description, aiDescription, aiExclusions, aiExamples, aiKeywords);
             redirect.addFlashAttribute("message", "分类已创建");
         } catch (IllegalArgumentException exception) {
             redirect.addFlashAttribute("error", exception.getMessage());
@@ -247,10 +253,12 @@ public class AdminController {
     public String updateCategory(@PathVariable Long id, @RequestParam String name, @RequestParam String slug,
             @RequestParam(defaultValue = "") String description,
             @RequestParam(defaultValue = "") String aiDescription,
+            @RequestParam(defaultValue = "") String aiExclusions,
+            @RequestParam(defaultValue = "") String aiExamples,
             @RequestParam(defaultValue = "") String aiKeywords,
             @RequestParam(defaultValue = "100") int sortOrder, RedirectAttributes redirect) {
         try {
-            taxonomy.updateCategory(id, name, slug, description, aiDescription, aiKeywords, sortOrder);
+            taxonomy.updateCategory(id, name, slug, description, aiDescription, aiExclusions, aiExamples, aiKeywords, sortOrder);
             redirect.addFlashAttribute("message", "分类已更新");
         } catch (IllegalArgumentException exception) {
             redirect.addFlashAttribute("error", exception.getMessage());
@@ -345,6 +353,7 @@ public class AdminController {
         model.addAttribute("article", article);
         model.addAttribute("leafCategories", categories.findEnabledLeaves());
         model.addAttribute("contentTypes", ContentType.values());
+        model.addAttribute("contentForms", ContentForm.values());
     }
 
     private long dataUsage() {

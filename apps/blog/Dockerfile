@@ -20,7 +20,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD ["/app/healthcheck.sh"]
 ENTRYPOINT ["/app/entrypoint.sh"]
 LABEL org.opencontainers.image.title="rurublog" \
-      org.opencontainers.image.description="小茹茹博客 - 轻量级 AI 个人技术博客"
+      org.opencontainers.image.description="小茹茹博客 - 轻量级、local-first 的 AI 个人博客"
 
 # Low-memory deployment: build the JAR locally, then choose --target prebuilt.
 FROM runtime-base AS prebuilt

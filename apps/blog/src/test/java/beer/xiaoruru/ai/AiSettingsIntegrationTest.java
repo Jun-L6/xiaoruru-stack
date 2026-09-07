@@ -76,7 +76,7 @@ class AiSettingsIntegrationTest {
             calls.incrementAndGet();
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
             payload.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            byte[] body = "{\"choices\":[{\"message\":{\"content\":\"hello\"}}]}".getBytes(StandardCharsets.UTF_8);
+            byte[] body = completion("hello", "model-one").getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);
@@ -179,7 +179,7 @@ class AiSettingsIntegrationTest {
                         try { release.await(5, java.util.concurrent.TimeUnit.SECONDS); }
                         catch (InterruptedException exception) { Thread.currentThread().interrupt(); }
                     } else {
-                        byte[] body = "{\"choices\":[{\"message\":{\"content\":\"recovered\"}}]}".getBytes(StandardCharsets.UTF_8);
+                        byte[] body = completion("recovered", "model").getBytes(StandardCharsets.UTF_8);
                         exchange.sendResponseHeaders(200, body.length);
                         exchange.getResponseBody().write(body);
                     }
@@ -200,7 +200,8 @@ class AiSettingsIntegrationTest {
     @Test void oversizedBodyIsRejectedWithoutReturningItsContents() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
-            byte[] bytes = new byte[2_000_001];
+            byte[] bytes = completion("x".repeat(2_000_001), "model").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, bytes.length);
             try { exchange.getResponseBody().write(bytes); }
             finally { exchange.close(); }
@@ -211,5 +212,13 @@ class AiSettingsIntegrationTest {
                     "key", "model", "/v1/chat/completions", 5, null, false));
             assertThatThrownBy(() -> gateway.complete(settings.connection(), "system", "user")).hasMessageContaining("过大");
         } finally { server.stop(0); }
+    }
+
+    private static String completion(String content, String model) {
+        return "{\"id\":\"chatcmpl-test\",\"object\":\"chat.completion\",\"created\":1,"
+                + "\"model\":\"" + model + "\",\"choices\":[{\"index\":0,\"message\":{"
+                + "\"role\":\"assistant\",\"content\":\"" + content + "\"},"
+                + "\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,"
+                + "\"completion_tokens\":1,\"total_tokens\":2}}";
     }
 }

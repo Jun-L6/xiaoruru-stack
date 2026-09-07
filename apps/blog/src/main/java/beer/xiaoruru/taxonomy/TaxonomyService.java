@@ -42,7 +42,7 @@ public class TaxonomyService {
         return Arrays.stream(commaSeparated.split("[,，]"))
                 .map(String::trim)
                 .filter(value -> !value.isBlank())
-                .limit(6)
+                .limit(5)
                 .map(value -> findOrCreate(value, createdBy))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
@@ -61,7 +61,7 @@ public class TaxonomyService {
 
     @Transactional
     public Category createCategory(String name, String slug, Long parentId, String description,
-            String aiDescription, String aiKeywords) {
+            String aiDescription, String aiExclusions, String aiExamples, String aiKeywords) {
         if (name == null || name.isBlank() || name.strip().length() > 80) {
             throw new IllegalArgumentException("分类名称不能为空且不能超过 80 个字符");
         }
@@ -82,16 +82,18 @@ public class TaxonomyService {
         }
         Category category = new Category(name.strip(), safeSlug);
         category.setParent(parent);
-        category.setDescription(description);
-        category.setAiDescription(aiDescription);
-        category.setAiKeywords(aiKeywords);
+        category.setDescription(optionalText(description, 500, "展示说明"));
+        category.setAiDescription(optionalText(aiDescription, 1000, "AI 应归入"));
+        category.setAiExclusions(optionalText(aiExclusions, 1000, "AI 不应归入"));
+        category.setAiExamples(optionalText(aiExamples, 2000, "AI 示例"));
+        category.setAiKeywords(optionalText(aiKeywords, 1000, "AI 关键词"));
         category.setSortOrder(100);
         return categories.save(category);
     }
 
     @Transactional
     public Category updateCategory(Long id, String name, String slug, String description,
-            String aiDescription, String aiKeywords, int sortOrder) {
+            String aiDescription, String aiExclusions, String aiExamples, String aiKeywords, int sortOrder) {
         Category category = categories.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("分类不存在"));
         if (name == null || name.isBlank() || name.strip().length() > 80) {
@@ -109,9 +111,11 @@ public class TaxonomyService {
                 .ifPresent(other -> { throw new IllegalArgumentException("分类 slug 已存在"); });
         category.setName(name.strip());
         category.setSlug(safeSlug);
-        category.setDescription(blankToNull(description));
-        category.setAiDescription(blankToNull(aiDescription));
-        category.setAiKeywords(blankToNull(aiKeywords));
+        category.setDescription(optionalText(description, 500, "展示说明"));
+        category.setAiDescription(optionalText(aiDescription, 1000, "AI 应归入"));
+        category.setAiExclusions(optionalText(aiExclusions, 1000, "AI 不应归入"));
+        category.setAiExamples(optionalText(aiExamples, 2000, "AI 示例"));
+        category.setAiKeywords(optionalText(aiKeywords, 1000, "AI 关键词"));
         category.setSortOrder(Math.max(-10_000, Math.min(10_000, sortOrder)));
         return category;
     }
@@ -214,5 +218,13 @@ public class TaxonomyService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.strip();
+    }
+
+    private String optionalText(String value, int maxLength, String fieldName) {
+        String normalized = blankToNull(value);
+        if (normalized != null && normalized.length() > maxLength) {
+            throw new IllegalArgumentException(fieldName + "不能超过 " + maxLength + " 个字符");
+        }
+        return normalized;
     }
 }

@@ -4,7 +4,7 @@
 <body>
 <header th:replace="~{fragments/site :: header}"></header>
 <main class="page-shell narrow-page">
-    <header class="page-heading"><p class="eyebrow">A TIMELINE OF THOUGHTS</p><h1>一路写下的痕迹<span class="accent-word">。</span></h1><p>每一篇记录，都是一次向前的探索。</p></header>
+    <header class="page-heading"><p class="eyebrow">A TIMELINE OF MOMENTS</p><h1>一路写下的痕迹<span class="accent-word">。</span></h1><p>长文章和小片段，都值得在时间里留一个位置。</p></header>
     <section class="archive-year" th:each="entry : ${archive}">
         <h2 th:text="${entry.key}">2026</h2>
         <ol>

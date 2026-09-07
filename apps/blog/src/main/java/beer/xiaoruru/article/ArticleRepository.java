@@ -58,6 +58,7 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
             + "or lower(coalesce(a.summary, '')) like lower(concat('%', :q, '%'))) "
             + "and (:status is null or a.status = :status) "
             + "and (:contentType is null or a.contentType = :contentType) "
+            + "and (:contentForm is null or a.contentForm = :contentForm) "
             + "and (:categoryId is null or a.category.id = :categoryId) "
             + "and (:tagId is null or t.id = :tagId) "
             + "and (:classificationStatus is null or a.classificationStatus = :classificationStatus) "
@@ -67,6 +68,7 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     List<Article> filterForAdmin(@Param("q") String query,
             @Param("status") ArticleStatus status,
             @Param("contentType") ContentType contentType,
+            @Param("contentForm") ContentForm contentForm,
             @Param("categoryId") Long categoryId,
             @Param("tagId") Long tagId,
             @Param("classificationStatus") ClassificationStatus classificationStatus,

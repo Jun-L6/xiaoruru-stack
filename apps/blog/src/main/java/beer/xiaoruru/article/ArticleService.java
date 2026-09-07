@@ -41,6 +41,7 @@ public class ArticleService {
 
         String previousHash = article.getContentHash();
         Long previousCategoryId = article.getCategory() == null ? null : article.getCategory().getId();
+        ContentForm previousContentForm = article.getContentForm();
         if (command.id() != null && article.getStatus() == ArticleStatus.PUBLISHED && hasMeaningfulChange(article, command)) {
             saveRevision(article, "BEFORE_UPDATE");
         }
@@ -50,6 +51,7 @@ public class ArticleService {
         }
         article.setSummary(blankToNull(command.summary()));
         article.setContentType(command.contentType());
+        article.setContentForm(command.contentForm());
         article.setContent(command.content());
         article.setContentHash(Hashing.sha256(command.content()));
         article.setRenderedHtml(renderer.render(command.contentType(), command.content()));
@@ -61,7 +63,11 @@ public class ArticleService {
         article.setSeoDescription(blankToNull(command.seoDescription()));
         article.setClassificationLocked(Boolean.TRUE.equals(command.classificationLocked()));
 
-        if (previousCategoryId != null && !previousCategoryId.equals(category.getId())) {
+        boolean manuallyClassifiedOnCreate = command.id() == null
+                && (!"uncategorized".equals(category.getSlug()) || command.contentForm() != ContentForm.LONGFORM);
+        boolean manuallyReclassified = command.id() != null && previousCategoryId != null
+                && (!previousCategoryId.equals(category.getId()) || previousContentForm != command.contentForm());
+        if (manuallyClassifiedOnCreate || manuallyReclassified) {
             article.setClassificationSource(ClassificationSource.MANUAL);
             article.setClassificationLocked(true);
             article.setClassificationStatus(ClassificationStatus.APPLIED);
@@ -138,7 +144,7 @@ public class ArticleService {
     public ArticleCommand toCommand(Article article) {
         String tagNames = article.getTags().stream().map(tag -> tag.getName()).collect(java.util.stream.Collectors.joining(", "));
         return new ArticleCommand(article.getId(), article.getTitle(), article.getSlug(), article.getSummary(),
-                article.getContentType(), article.getContent(), article.getCategory().getId(), tagNames,
+                article.getContentType(), article.getContentForm(), article.getContent(), article.getCategory().getId(), tagNames,
                 article.isPinned(), article.isClassificationLocked(), article.getSeoTitle(), article.getSeoDescription());
     }
 
@@ -157,7 +163,8 @@ public class ArticleService {
     private boolean hasMeaningfulChange(Article article, ArticleCommand command) {
         return !java.util.Objects.equals(article.getTitle(), command.title().strip())
                 || !java.util.Objects.equals(article.getContent(), command.content())
-                || article.getContentType() != command.contentType();
+                || article.getContentType() != command.contentType()
+                || article.getContentForm() != command.contentForm();
     }
 
     private String uniqueSlugFor(String requested, Long id, String fallback) {

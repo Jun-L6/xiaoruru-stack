@@ -10,6 +10,7 @@ public record ArticleCommand(
         @Size(max = 220) String slug,
         @Size(max = 1000) String summary,
         @NotNull ContentType contentType,
+        @NotNull ContentForm contentForm,
         @NotNull @Size(max = 2_000_000) String content,
         @NotNull Long categoryId,
         @Size(max = 500) String tags,

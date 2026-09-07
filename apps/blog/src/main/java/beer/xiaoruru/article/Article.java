@@ -42,6 +42,10 @@ public class Article extends BaseEntity {
     @Column(name = "content_type", nullable = false, length = 20)
     private ContentType contentType = ContentType.MARKDOWN;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "content_form", nullable = false, length = 20)
+    private ContentForm contentForm = ContentForm.LONGFORM;
+
     @Column(name = "content_hash", nullable = false, length = 64)
     private String contentHash;
 
@@ -123,6 +127,8 @@ public class Article extends BaseEntity {
     public void setContent(String content) { this.content = content; }
     public ContentType getContentType() { return contentType; }
     public void setContentType(ContentType contentType) { this.contentType = contentType; }
+    public ContentForm getContentForm() { return contentForm; }
+    public void setContentForm(ContentForm contentForm) { this.contentForm = contentForm; }
     public String getContentHash() { return contentHash; }
     public void setContentHash(String contentHash) { this.contentHash = contentHash; }
     public String getRenderedHtml() { return renderedHtml; }

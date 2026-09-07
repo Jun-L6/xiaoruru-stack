@@ -28,8 +28,24 @@ public record BlogProperties(
     }
 
     public record Ai(
+            @Valid @NotNull OpenAi openai,
             @Valid @NotNull Classification classification
     ) {}
+
+    public record OpenAi(
+            boolean enabled,
+            String baseUrl,
+            String apiKey,
+            String model,
+            String completionsPath,
+            @NotNull Duration timeout,
+            Double temperature
+    ) {
+        @Override
+        public String toString() {
+            return "OpenAi[credentials=REDACTED, enabled=" + enabled + ", model=" + model + "]";
+        }
+    }
 
     public record Classification(
             boolean autoRun,

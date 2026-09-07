@@ -21,6 +21,7 @@
                 <input id="title" class="title-input" th:field="*{title}" maxlength="200" required placeholder="文章标题">
                 <div class="inline-fields">
                     <label>正文格式<select th:field="*{contentType}" data-content-type><option th:each="type : ${contentTypes}" th:value="${type}" th:text="${type}"></option></select></label>
+                    <label>内容形态<select th:field="*{contentForm}"><option th:each="form : ${contentForms}" th:value="${form}" th:text="${form.label}"></option></select><small>AI 会随分类一起判断；人工修改会锁定结果</small></label>
                     <label>固定链接<input th:field="*{slug}" maxlength="220" placeholder="留空自动生成"></label>
                 </div>
                 <label for="content">正文</label>
@@ -32,7 +33,7 @@
             </section>
             <aside class="editor-sidebar">
                 <label>分类<select th:field="*{categoryId}" required><option th:each="category : ${leafCategories}" th:value="${category.id}" th:text="${category.pathName}"></option></select></label>
-                <label>标签<input th:field="*{tags}" maxlength="500" placeholder="Java, Spring, JVM"><small>使用逗号分隔，最多 6 个</small></label>
+                <label>标签<input th:field="*{tags}" maxlength="500" placeholder="咖啡, 周末, Java"><small>使用逗号分隔，0–5 个；不必凑数</small></label>
                 <label>插入图片或附件<input type="file" data-media-upload accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,text/markdown,application/zip"><small data-upload-state>上传后自动插入正文</small></label>
                 <label>摘要<textarea th:field="*{summary}" rows="5" maxlength="1000" placeholder="留空则从正文生成"></textarea></label>
                 <label>SEO 标题<input th:field="*{seoTitle}" maxlength="200"></label>
@@ -42,6 +43,7 @@
                 <div class="ai-result" th:if="${article != null}">
                     <strong>AI 分类</strong>
                     <span class="status" th:text="${article.classificationStatus}">PENDING</span>
+                    <p th:text="'内容形态：' + ${article.contentForm.label}"></p>
                     <p th:if="${article.classificationConfidence != null}" th:text="'置信度：' + ${#numbers.formatDecimal(article.classificationConfidence, 1, 2)}"></p>
                     <p th:if="${article.classificationReason}" th:text="${article.classificationReason}"></p>
                 </div>
@@ -49,7 +51,7 @@
         </div>
     </form>
     <div class="editor-actions" th:if="${article != null}">
-        <form th:action="@{/admin/articles/{id}/classify(id=${article.id})}" method="post" onsubmit="return confirm('重新分类会解除人工分类锁，AI 结果可能覆盖当前分类和标签。确认继续？')"><button type="submit">重新 AI 分类</button></form>
+        <form th:action="@{/admin/articles/{id}/classify(id=${article.id})}" method="post" onsubmit="return confirm('重新分类会解除人工分类锁，AI 结果可能覆盖当前分类、内容形态和标签。确认继续？')"><button type="submit">重新 AI 分类</button></form>
         <form th:if="${article.status.name() != 'PUBLISHED'}" th:action="@{/admin/articles/{id}/publish(id=${article.id})}" method="post"><button class="primary" type="submit">发布文章</button></form>
         <form th:if="${article.status.name() == 'PUBLISHED'}" th:action="@{/admin/articles/{id}/withdraw(id=${article.id})}" method="post"><button type="submit">撤回为草稿</button></form>
         <form th:if="${article.status.name() != 'TRASHED'}" th:action="@{/admin/articles/{id}/trash(id=${article.id})}" method="post" onsubmit="return confirm('确定移入回收站吗？')"><button class="danger" type="submit">移入回收站</button></form>

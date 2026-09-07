@@ -5,7 +5,7 @@
 <header th:replace="~{fragments/site :: header}"></header>
 <main class="page-shell">
     <header class="page-heading">
-        <p class="eyebrow">EXPLORE THE NOTEBOOK</p>
+        <p class="eyebrow">BROWSE THE NOTEBOOK</p>
         <h1 th:text="${heading}">文章列表</h1>
         <p th:if="${description}" th:text="${description}"></p>
         <form class="search-form" th:if="${pageTitle == '搜索'}" th:action="@{/search}" method="get">
@@ -15,8 +15,8 @@
         </form>
     </header>
     <section class="article-list">
-        <article class="article-card" th:each="article : ${page.content}">
-            <p class="article-meta"><time th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd')}">日期</time></p>
+        <article class="article-card" th:each="article : ${page.content}" th:classappend="${'form-' + article.contentForm.name().toLowerCase()}">
+            <p class="article-meta"><span class="form-badge" th:text="${article.contentForm.label}">长文</span><time th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd')}">日期</time></p>
             <h2><a th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${article.title}">标题</a></h2>
             <p class="article-summary" th:text="${article.summary}">摘要</p>
         </article>

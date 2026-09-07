@@ -29,6 +29,12 @@ public class Category extends BaseEntity {
     @Column(name = "ai_description", length = 1000)
     private String aiDescription;
 
+    @Column(name = "ai_exclusions", length = 1000)
+    private String aiExclusions;
+
+    @Column(name = "ai_examples", length = 2000)
+    private String aiExamples;
+
     @Column(name = "ai_keywords", length = 1000)
     private String aiKeywords;
 
@@ -66,6 +72,10 @@ public class Category extends BaseEntity {
     public void setDescription(String description) { this.description = description; }
     public String getAiDescription() { return aiDescription; }
     public void setAiDescription(String aiDescription) { this.aiDescription = aiDescription; }
+    public String getAiExclusions() { return aiExclusions; }
+    public void setAiExclusions(String aiExclusions) { this.aiExclusions = aiExclusions; }
+    public String getAiExamples() { return aiExamples; }
+    public void setAiExamples(String aiExamples) { this.aiExamples = aiExamples; }
     public String getAiKeywords() { return aiKeywords; }
     public void setAiKeywords(String aiKeywords) { this.aiKeywords = aiKeywords; }
     public boolean isEnabled() { return enabled; }

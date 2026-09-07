@@ -56,13 +56,22 @@ blog:
     secret-hash: ${BLOG_ADMIN_SECRET_HASH:}
     session-timeout: ${BLOG_ADMIN_SESSION_TIMEOUT:12h}
   ai:
+    # 可直接在此处填写 OpenAI-compatible 配置；后台保存设置后，以后台设置为准。
+    openai:
+      enabled: ${BLOG_AI_ENABLED:false}
+      base-url: ${BLOG_AI_BASE_URL:https://api.openai.com}
+      api-key: ${BLOG_AI_API_KEY:}
+      model: ${BLOG_AI_MODEL:gpt-4o-mini}
+      completions-path: ${BLOG_AI_COMPLETIONS_PATH:/v1/chat/completions}
+      timeout: ${BLOG_AI_TIMEOUT:45s}
+      temperature: ${BLOG_AI_TEMPERATURE:}
     classification:
       auto-run: ${BLOG_AI_AUTO_RUN:true}
       delay-after-save: ${BLOG_AI_DELAY:10s}
-      minimum-confidence: ${BLOG_AI_MIN_CONFIDENCE:0.55}
-      review-confidence: ${BLOG_AI_REVIEW_CONFIDENCE:0.80}
-      min-tags: 2
-      max-tags: 6
+      minimum-confidence: ${BLOG_AI_MIN_CONFIDENCE:0.50}
+      review-confidence: ${BLOG_AI_REVIEW_CONFIDENCE:0.75}
+      min-tags: 0
+      max-tags: 5
   backup:
     enabled: ${BLOG_BACKUP_ENABLED:true}
     cron: ${BLOG_BACKUP_CRON:0 0 3 * * *}

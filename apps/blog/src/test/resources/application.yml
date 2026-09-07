@@ -13,13 +13,21 @@ blog:
     secret-hash: "{noop}test-secret"
     session-timeout: 1h
   ai:
+    openai:
+      enabled: false
+      base-url: https://api.openai.com
+      api-key: ""
+      model: gpt-4o-mini
+      completions-path: /v1/chat/completions
+      timeout: 45s
+      temperature:
     classification:
       auto-run: false
       delay-after-save: 1s
-      minimum-confidence: 0.55
-      review-confidence: 0.80
-      min-tags: 2
-      max-tags: 6
+      minimum-confidence: 0.50
+      review-confidence: 0.75
+      min-tags: 0
+      max-tags: 5
   backup:
     enabled: false
     retention-count: 2
