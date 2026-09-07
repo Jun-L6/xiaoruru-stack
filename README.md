@@ -62,6 +62,9 @@ PYTHONPATH=. python3 tests/smoke_gost.py
 PYTHONPATH=. python3 tests/check_cpa_installer.py
 docker build --target prebuilt -t xiaoruru/rurublog:local ./apps/blog
 PYTHONPATH=. python3 tests/smoke_blog_container.py
+PYTHONPATH=. python3 tests/smoke_lifecycle.py
 ```
 
 单元和 Compose 合并测试不启动容器。网关、VPN 和 GOST 冒烟测试会在本机启动隔离的临时容器，只发布回环地址端口（VPN 不发布端口），使用自签名测试证书，完成后移除测试容器及专用网络。VPN 测试会检测公网 REALITY 握手目标；CPA 契约测试需要访问官方仓库，只生成临时配置、禁止执行部署。博客测试需要 JDK 21 和 Maven。
+
+`smoke_lifecycle.py` 使用真实管理器验证首次部署、重复启停、GOST 配置变更、ACME 文件权限、博客独立启动和 Nginx 错误恢复；仅以自签名证书替代公网 CA 申请。该测试读取生成的订阅，并经两条 VPN 隧道向 example.com 发起 HTTPS 请求，需要正常出站网络。测试需要博客镜像，使用独立项目名和网络，不操作正式部署。

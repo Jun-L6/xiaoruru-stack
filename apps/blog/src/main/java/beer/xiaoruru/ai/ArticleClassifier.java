@@ -1,5 +1,5 @@
 package beer.xiaoruru.ai;
 
 public interface ArticleClassifier {
-    ClassificationResult classify(ArticleClassificationRequest request);
+    ClassificationResult classify(ArticleClassificationRequest request, AiSettingsService.Connection connection);
 }

@@ -74,8 +74,10 @@ services:
     depends_on:
       nginx-ui: {condition: service_healthy}
     command: ["-C", "/etc/gost/config.json"]
+    labels:
+      beer.xiaoruru.config-hash: ${GOST_CONFIG_HASH}
     volumes:
-      - ./data/vpn/gost/config.json:/etc/gost/config.json:ro
+      - ./data/vpn/gost:/etc/gost:ro
       - ./data/gateway/certificates:/etc/letsencrypt:ro
     ports: ["9443:9443"]
     networks: [gateway]

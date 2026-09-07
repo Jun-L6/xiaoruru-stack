@@ -19,23 +19,20 @@ public class OpenAiArticleClassifier implements ArticleClassifier {
             """;
 
     private final OpenAiChatGateway gateway;
-    private final AiSettingsService settings;
     private final CategoryRepository categories;
     private final ObjectMapper objectMapper;
     private final TagRepository tags;
 
-    public OpenAiArticleClassifier(OpenAiChatGateway gateway, AiSettingsService settings, CategoryRepository categories,
+    public OpenAiArticleClassifier(OpenAiChatGateway gateway, CategoryRepository categories,
             TagRepository tags, ObjectMapper objectMapper) {
         this.gateway = gateway;
-        this.settings = settings;
         this.categories = categories;
         this.tags = tags;
         this.objectMapper = objectMapper;
     }
 
     @Override
-    public ClassificationResult classify(ArticleClassificationRequest request) {
-        var connection = settings.connection();
+    public ClassificationResult classify(ArticleClassificationRequest request, AiSettingsService.Connection connection) {
         List<Category> leaves = categories.findEnabledLeaves();
         StringBuilder candidates = new StringBuilder();
         for (Category category : leaves) {

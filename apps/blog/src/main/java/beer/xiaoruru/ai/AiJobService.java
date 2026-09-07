@@ -4,6 +4,7 @@ import beer.xiaoruru.article.Article;
 import beer.xiaoruru.article.ArticleRepository;
 import beer.xiaoruru.article.ArticlePublishedEvent;
 import beer.xiaoruru.article.ArticleSavedEvent;
+import beer.xiaoruru.article.ArticleStatus;
 import beer.xiaoruru.article.ClassificationSource;
 import beer.xiaoruru.article.ClassificationStatus;
 import beer.xiaoruru.config.BlogProperties;
@@ -97,6 +98,10 @@ public class AiJobService {
             job.setCompletedAt(Instant.now());
             job.setErrorType("ApplicationRestarted");
             job.setErrorMessage("应用重启中断了任务，请按需手动重试。");
+            Article article = job.getArticle();
+            if (!obsolete(article, job.getContentHash())) {
+                article.setClassificationStatus(ClassificationStatus.FAILED);
+            }
         }
     }
 
@@ -113,9 +118,13 @@ public class AiJobService {
 
     @Transactional
     public AiJob enqueue(Long articleId, String hash, java.time.Duration delay) {
-        if (jobs.existsByArticleIdAndContentHashAndStatusIn(articleId, hash, ACTIVE)) {
-            return jobs.findFirstByArticleIdAndContentHashAndStatusIn(articleId, hash, ACTIVE)
-                    .orElse(null);
+        AiJob active = jobs.findFirstByArticleIdAndContentHashAndStatusIn(articleId, hash, ACTIVE).orElse(null);
+        if (active != null) {
+            Instant requested = Instant.now().plus(delay);
+            if (active.getStatus() == AiJobStatus.PENDING && requested.isBefore(active.getAvailableAt())) {
+                active.setAvailableAt(requested);
+            }
+            return active;
         }
         Article article = articles.findById(articleId).orElseThrow(() -> new IllegalArgumentException("文章不存在"));
         return jobs.save(new AiJob(article, hash, Instant.now().plus(delay)));
@@ -147,24 +156,25 @@ public class AiJobService {
 
     @Scheduled(fixedDelayString = "${blog.ai.poll-delay:5s}")
     public void processNext() {
-        if (!settings.enabled()) return;
-        Work work = transactions.execute(status -> claim());
+        var selection = settings.selection();
+        if (!selection.enabled()) return;
+        Work work = transactions.execute(status -> claim(selection));
         if (work == null) return;
         long startedNanos = System.nanoTime();
         try {
-            ClassificationResult result = classifyWithTimeout(work.request());
+            ClassificationResult result = classifyWithTimeout(work.request(), settings.connection(work.selection()));
             long elapsedMs = elapsedMillis(startedNanos);
             transactions.executeWithoutResult(status -> apply(work, result, elapsedMs));
         } catch (RuntimeException exception) {
             long elapsedMs = elapsedMillis(startedNanos);
-            transactions.executeWithoutResult(status -> fail(work.jobId(), exception, elapsedMs));
+            transactions.executeWithoutResult(status -> fail(work, exception, elapsedMs));
         }
     }
 
-    private ClassificationResult classifyWithTimeout(ArticleClassificationRequest request) {
-        var future = aiExecutor.submit(() -> classifier.classify(request));
+    private ClassificationResult classifyWithTimeout(ArticleClassificationRequest request, AiSettingsService.Connection connection) {
+        var future = aiExecutor.submit(() -> classifier.classify(request, connection));
         try {
-            return future.get(settings.timeout().toMillis(), TimeUnit.MILLISECONDS);
+            return future.get(connection.timeout().toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException exception) {
             future.cancel(true);
             throw new IllegalStateException("AI 分类请求超时", exception);
@@ -179,28 +189,35 @@ public class AiJobService {
         }
     }
 
-    private Work claim() {
+    private Work claim(AiSettingsService.Selection selection) {
         AiJob job = jobs.findFirstByStatusAndAvailableAtLessThanEqualOrderByCreatedAtAsc(AiJobStatus.PENDING, Instant.now())
                 .orElse(null);
         if (job == null) return null;
+        Article article = job.getArticle();
+        if (obsolete(article, job.getContentHash())) {
+            job.setStatus(AiJobStatus.CANCELLED);
+            job.setCompletedAt(Instant.now());
+            job.setErrorType("ContentChangedOrLocked");
+            job.setErrorMessage("文章已变化、进入回收站或被人工锁定，未发送模型请求。");
+            return null;
+        }
         job.setStatus(AiJobStatus.RUNNING);
         job.setStartedAt(Instant.now());
         job.setAttemptCount(job.getAttemptCount() + 1);
-        Article article = job.getArticle();
         String plain = renderer.toPlainText(article.getContent());
         if (plain.length() > 14_000) plain = plain.substring(0, 14_000);
         return new Work(job.getId(), new ArticleClassificationRequest(article.getId(), article.getTitle(),
-                article.getSummary(), plain, job.getContentHash()));
+                article.getSummary(), plain, job.getContentHash()), selection);
     }
 
     private void apply(Work work, ClassificationResult result, long elapsedMs) {
         AiJob job = jobs.findById(work.jobId()).orElseThrow();
         Article article = articles.findById(work.request().articleId()).orElseThrow();
-        if (!article.getContentHash().equals(work.request().contentHash()) || article.isClassificationLocked()) {
+        if (obsolete(article, work.request().contentHash())) {
             job.setStatus(AiJobStatus.CANCELLED);
             job.setCompletedAt(Instant.now());
-            AiExecutionLog execution = new AiExecutionLog(job, settings.model(),
-                    endpointIdentifier(), elapsedMs);
+            AiExecutionLog execution = new AiExecutionLog(job, work.selection().profile().model(),
+                    endpointIdentifier(work), elapsedMs);
             execution.setParseStatus("CANCELLED");
             execution.setErrorType("ContentChangedOrLocked");
             execution.setErrorMessage("文章正文已变化或分类已被人工锁定，模型结果未应用");
@@ -252,8 +269,8 @@ public class AiJobService {
         job.setCompletedAt(Instant.now());
         job.setErrorType(null);
         job.setErrorMessage(null);
-        AiExecutionLog execution = new AiExecutionLog(job, settings.model(),
-                endpointIdentifier(), elapsedMs);
+        AiExecutionLog execution = new AiExecutionLog(job, work.selection().profile().model(),
+                endpointIdentifier(work), elapsedMs);
         execution.setParseStatus("SUCCEEDED");
         execution.setCategoryId(category.getId());
         execution.setConfidence(confidence);
@@ -262,32 +279,32 @@ public class AiJobService {
         executionLogs.save(execution);
     }
 
-    private void fail(Long jobId, RuntimeException exception, long elapsedMs) {
-        AiJob job = jobs.findById(jobId).orElseThrow();
+    private void fail(Work work, RuntimeException exception, long elapsedMs) {
+        AiJob job = jobs.findById(work.jobId()).orElseThrow();
         job.setErrorType(exception.getClass().getSimpleName());
         job.setErrorMessage(clip(exception.getMessage(), 1000));
         job.setStatus(AiJobStatus.FAILED);
         job.setCompletedAt(Instant.now());
         Article article = job.getArticle();
-        if (article.getContentHash().equals(job.getContentHash())) {
+        if (!obsolete(article, job.getContentHash())) {
             article.setClassificationStatus(ClassificationStatus.FAILED);
         }
-        AiExecutionLog execution = new AiExecutionLog(job, settings.model(),
-                endpointIdentifier(), elapsedMs);
+        AiExecutionLog execution = new AiExecutionLog(job, work.selection().profile().model(),
+                endpointIdentifier(work), elapsedMs);
         execution.setParseStatus("FAILED");
         execution.setErrorType(exception.getClass().getSimpleName());
         execution.setErrorMessage(clip(exception.getMessage(), 1000));
         executionLogs.save(execution);
-        log.warn("AI classification job {} failed: {}", jobId, exception.getMessage());
+        log.warn("AI classification job {} failed: {}", work.jobId(), exception.getMessage());
     }
 
     private long elapsedMillis(long startedNanos) {
         return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
     }
 
-    private String endpointIdentifier() {
+    private String endpointIdentifier(Work work) {
         try {
-            java.net.URI uri = java.net.URI.create(settings.endpoint());
+            java.net.URI uri = java.net.URI.create(work.selection().profile().baseUrl());
             return uri.getHost() == null ? "configured-endpoint" : uri.getHost();
         } catch (IllegalArgumentException ignored) {
             return "configured-endpoint";
@@ -309,5 +326,10 @@ public class AiJobService {
         return clip(value, 500);
     }
 
-    private record Work(Long jobId, ArticleClassificationRequest request) {}
+    private boolean obsolete(Article article, String hash) {
+        return !article.getContentHash().equals(hash) || article.isClassificationLocked()
+                || article.getStatus() == ArticleStatus.TRASHED;
+    }
+
+    private record Work(Long jobId, ArticleClassificationRequest request, AiSettingsService.Selection selection) {}
 }

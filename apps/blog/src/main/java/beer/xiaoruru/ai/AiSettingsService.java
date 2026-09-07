@@ -14,7 +14,8 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
@@ -23,16 +24,20 @@ public class AiSettingsService {
     private final AiSettingsRepository repository;
     private final ObjectMapper mapper;
     private final Path keyPath;
+    private final TransactionTemplate transactions;
 
-    public AiSettingsService(AiSettingsRepository repository, ObjectMapper mapper, BlogProperties properties) {
+    public AiSettingsService(AiSettingsRepository repository, ObjectMapper mapper, BlogProperties properties,
+                             PlatformTransactionManager transactionManager) {
         this.repository = repository;
         this.mapper = mapper;
         this.keyPath = properties.dataDir().resolve("secrets/ai.key");
+        this.transactions = new TransactionTemplate(transactionManager);
     }
 
     public record Profile(String baseUrl, String encryptedKey, String model, String completionsPath,
                           int timeoutSeconds, Double temperature) {}
     public record Document(String mode, Profile cpa, Profile external) {}
+    public record Selection(boolean enabled, Profile profile) {}
     public record Form(String mode, String baseUrl, String apiKey, String model, String completionsPath,
                        int timeoutSeconds, Double temperature, boolean clearKey) {
         @Override public String toString() { return "AiSettingsForm[REDACTED]"; }
@@ -58,6 +63,11 @@ public class AiSettingsService {
     public String model() { return selected(document()).model(); }
     public String endpoint() { return selected(document()).baseUrl(); }
 
+    public Selection selection() {
+        Document doc = document();
+        return new Selection(!doc.mode().equals("none"), selected(doc));
+    }
+
     public Map<String, Object> view() {
         Document doc = document();
         return Map.of("mode", doc.mode(), "cpa", publicProfile(doc.cpa()), "external", publicProfile(doc.external()));
@@ -70,9 +80,13 @@ public class AiSettingsService {
                 "temperature", profile.temperature() == null ? "" : profile.temperature().toString());
     }
 
-    @Transactional
     public synchronized void save(Form form) {
-        if (!java.util.Set.of("none", "cpa", "external").contains(form.mode())) {
+        // Keep the lock through commit so two browser tabs cannot overwrite each other's profiles.
+        transactions.executeWithoutResult(status -> saveWithinTransaction(form));
+    }
+
+    private void saveWithinTransaction(Form form) {
+        if (form.mode() == null || !java.util.Set.of("none", "cpa", "external").contains(form.mode())) {
             throw new IllegalArgumentException("请选择关闭、CPA 或外部模型。");
         }
         Document old = document();
@@ -93,9 +107,9 @@ public class AiSettingsService {
             URI uri;
             try { uri = URI.create(base); }
             catch (IllegalArgumentException exception) { throw new IllegalArgumentException("接口地址格式不正确。"); }
-            if (!java.util.Set.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null
+            if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme())) || uri.getHost() == null
                     || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
-                    || base.length() > 1000) {
+                    || uri.getPort() == 0 || uri.getPort() > 65535 || base.length() > 1000) {
                 throw new IllegalArgumentException("接口地址必须是 HTTP(S) URL，不得包含账号、查询参数或片段。");
             }
             if (!path.matches("/[a-zA-Z0-9/_-]+") || path.contains("//") || path.length() > 200) {
@@ -112,7 +126,7 @@ public class AiSettingsService {
                 throw new IllegalArgumentException("Temperature 范围为 0 至 2，留空使用模型默认值。");
             }
             String supplied = value(form.apiKey());
-            if (supplied.length() > 4096 || supplied.chars().anyMatch(Character::isISOControl)) {
+            if (supplied.length() > 4096 || supplied.chars().anyMatch(ch -> ch < 33 || ch > 126)) {
                 throw new IllegalArgumentException("API Key 格式不正确。");
             }
             // A key is never silently forwarded to a newly selected external origin.
@@ -129,9 +143,12 @@ public class AiSettingsService {
     }
 
     public Connection connection() {
-        Document doc = document();
-        if (doc.mode().equals("none")) throw new IllegalStateException("AI 已关闭，请在后台 AI 设置中启用。");
-        Profile profile = selected(doc);
+        return connection(selection());
+    }
+
+    public Connection connection(Selection selection) {
+        if (!selection.enabled()) throw new IllegalStateException("AI 已关闭，请在后台 AI 设置中启用。");
+        Profile profile = selection.profile();
         return new Connection(URI.create(profile.baseUrl() + profile.completionsPath()),
                 decrypt(profile.encryptedKey()), profile.model(),
                 Duration.ofSeconds(profile.timeoutSeconds()), profile.temperature());

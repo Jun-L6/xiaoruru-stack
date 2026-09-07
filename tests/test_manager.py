@@ -12,9 +12,9 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from manager.__main__ import execute, lock
+from manager.__main__ import execute, initialize, lock
 from manager.runtime import Runtime, clean_env
-from manager.storage import ROOT, StackError, Store, write
+from manager.storage import CERT_NAME, ROOT, StackError, Store, validate, write
 
 
 @contextmanager
@@ -84,6 +84,43 @@ class StorageTest(unittest.TestCase):
                 execute(argparse.Namespace(command="status", module=None), store)
             self.assertFalse(store.data.exists())
 
+    def test_malformed_configuration_gives_friendly_error(self):
+        with fixture() as (_, runtime):
+            for key, value in (("enabled", [{}]), ("domains", []), ("email", None),
+                               ("network", []), ("images", [])):
+                config = copy.deepcopy(runtime.config)
+                config[key] = value
+                with self.subTest(key=key), self.assertRaises(StackError):
+                    validate(config)
+            with self.assertRaises(StackError):
+                validate([])
+            for value in ("127.0.0.0/16", "0.0.0.0/16", "192.0.0.0/24"):
+                runtime.config["network"]["subnet"] = value
+                with self.assertRaises(StackError):
+                    validate(runtime.config)
+
+    def test_single_module_first_init_does_not_enable_unselected_features(self):
+        with fixture() as (store, _):
+            store.config_path.unlink()
+            with patch("sys.stdin.isatty", return_value=True), patch("manager.__main__.ask", side_effect=lambda label, default: "admin@example.com" if "邮箱" in label else default):
+                initialize(store, "blog")
+            self.assertEqual(["blog"], store.load()["enabled"])
+
+    def test_unchanged_prepare_preserves_inode_and_gost_changes_hash(self):
+        with fixture() as (store, runtime):
+            path = store.data / "vpn/gost/config.json"
+            inode = path.stat().st_ino
+            env = (store.system / "compose.env").read_bytes()
+            store.prepare(runtime.config)
+            self.assertEqual(inode, path.stat().st_ino)
+            private = store.system / "secrets.json"
+            secrets = json.loads(private.read_text())
+            secrets["gost_password"] = "a-new-test-password"
+            write(private, json.dumps(secrets))
+            store.prepare(runtime.config)
+            self.assertNotEqual(env, (store.system / "compose.env").read_bytes())
+            self.assertIn("a-new-test-password", path.read_text())
+
 
 class LifecycleTest(unittest.TestCase):
     def test_blog_starts_gateway_without_cpa(self):
@@ -108,7 +145,7 @@ class LifecycleTest(unittest.TestCase):
 
     def test_stop_gateway_refuses_running_business(self):
         with fixture() as (_, runtime):
-            runtime.running = Mock(return_value=True)
+            runtime.containers = Mock(return_value=[{"project": "xiaoruru", "service": "rurublog", "State": "restarting"}])
             runtime.compose = Mock()
             with self.assertRaises(StackError):
                 runtime.stop("gateway")
@@ -116,16 +153,19 @@ class LifecycleTest(unittest.TestCase):
 
     def test_stop_all_still_works_with_broken_nginx(self):
         with fixture() as (_, runtime):
-            runtime.cpa_installed = Mock(return_value=True)
             runtime.compose = Mock()
-            runtime.stop("all")
-            self.assertEqual(2, runtime.compose.call_count)
-            self.assertFalse(any("down" in call.args for call in runtime.compose.call_args_list))
+            runtime.containers = Mock(return_value=[{"project": "xiaoruru", "service": "nginx-ui",
+                                                     "State": "running", "ID": "a" * 12}])
+            with patch("manager.runtime.run") as run:
+                runtime.stop("all")
+            runtime.compose.assert_not_called()
+            self.assertEqual(["docker", "stop", "--timeout", "30", "a" * 12], run.call_args.args[0])
 
     def test_repeat_vpn_start_skips_initialization(self):
         with fixture() as (store, runtime):
             store.mark("vpn_admin_ready")
             store.mark("vpn_ready")
+            write(store.data / "vpn/xui/x-ui.db", "test-database")
             runtime.gateway = Mock()
             runtime.up = Mock()
             runtime.compose = Mock()
@@ -139,7 +179,7 @@ class LifecycleTest(unittest.TestCase):
             runtime.config["enabled"] = ["cpa"]
             runtime.gateway = Mock()
             runtime.cpa_override = Mock()
-            runtime.cpa_installed = Mock(return_value=True)
+            runtime.cpa_ready = Mock(return_value=True)
             runtime.up = Mock()
             runtime.sites = Mock()
             runtime.official_installer = Mock()
@@ -151,7 +191,7 @@ class LifecycleTest(unittest.TestCase):
         with fixture() as (_, runtime):
             runtime.gateway = Mock()
             runtime.cpa_override = Mock()
-            runtime.cpa_installed = Mock(return_value=True)
+            runtime.cpa_ready = Mock(return_value=True)
             runtime.running = Mock(return_value=True)
             runtime.sites = Mock()
             runtime.official_installer = Mock(return_value=True)
@@ -190,16 +230,147 @@ class LifecycleTest(unittest.TestCase):
             self.assertFalse((nginx / "sites-enabled/50-rurublog.conf").exists())
 
     def test_external_compose_environment_is_not_inherited(self):
-        with patch.dict(os.environ, COMPOSE_FILE="/other/compose.yaml", CPAMP_OPERATION="upgrade"):
-            self.assertNotIn("COMPOSE_FILE", clean_env())
-            self.assertNotIn("CPAMP_OPERATION", clean_env())
+        with patch.dict(os.environ, COMPOSE_FILE="/other/compose.yaml", CPAMP_OPERATION="upgrade",
+                        GATEWAY_NETWORK="wrong", BLOG_IMAGE="wrong", CPA_IMAGE="wrong", DOCKER_HOST="keep"):
+            for key in ("COMPOSE_FILE", "CPAMP_OPERATION", "GATEWAY_NETWORK", "BLOG_IMAGE", "CPA_IMAGE"):
+                self.assertNotIn(key, clean_env())
+            self.assertEqual("keep", clean_env()["DOCKER_HOST"])
+
+    def test_invalid_or_cancelled_commands_do_not_prepare_data(self):
+        with fixture() as (store, _), patch.object(Store, "prepare") as prepare, patch.object(Runtime, "preflight") as preflight:
+            with self.assertRaises(StackError):
+                execute(argparse.Namespace(command="start", module="unknown", yes=False), store)
+            with patch("sys.stdin.isatty", return_value=False):
+                execute(argparse.Namespace(command="stop", module="all", yes=False), store)
+            prepare.assert_not_called()
+            preflight.assert_not_called()
+
+    def test_stop_does_not_run_preflight(self):
+        with fixture() as (store, _), patch.object(Runtime, "stop") as stop, patch.object(Runtime, "preflight") as preflight:
+            execute(argparse.Namespace(command="stop", module="blog", yes=False), store)
+            stop.assert_called_once_with("blog")
+            preflight.assert_not_called()
+
+    def test_failed_site_validation_restores_files_and_links(self):
+        with fixture() as (store, runtime):
+            nginx = store.data / "gateway/nginx"
+            (nginx / "sites-enabled").mkdir()
+            runtime.reload = Mock()
+            runtime.sites("blog")
+            target = nginx / "sites-available/50-rurublog.conf"
+            target.write_text("# Original user configuration\n")
+            runtime.reload.side_effect = StackError("invalid configuration")
+            with self.assertRaises(StackError):
+                runtime.sites("blog", replace=True)
+            self.assertEqual("# Original user configuration\n", target.read_text())
+            self.assertTrue((nginx / "sites-enabled/50-rurublog.conf").is_symlink())
+            with self.assertRaises(StackError):
+                runtime.sites("cpa")
+            self.assertFalse((nginx / "sites-enabled/30-cpa-manager-plus.conf").exists())
+            self.assertFalse((nginx / "sites-available/30-cpa-manager-plus.conf").exists())
+
+    def test_certificate_application_resumes_after_restart_failure(self):
+        with fixture() as (store, runtime):
+            live = store.data / f"gateway/certificates/live/{CERT_NAME}"
+            write(live / "fullchain.pem", "test certificate")
+            write(live / "privkey.pem", "test key")
+            runtime.reload = Mock()
+            runtime.containers = Mock(return_value=[{"project": "xiaoruru", "service": "xui", "State": "running"}])
+            runtime.compose = Mock(side_effect=StackError("restart interrupted"))
+            runtime.up = Mock()
+            with self.assertRaises(StackError):
+                runtime.apply_certificate()
+            self.assertNotIn("xui", store.state()["certificate_applied"])
+            runtime.compose.side_effect = None
+            runtime.apply_certificate()
+            runtime.compose.assert_called_with("restart", "xui")
+            self.assertIn("xui", store.state()["certificate_applied"])
+            runtime.compose.reset_mock()
+            runtime.apply_certificate()
+            runtime.compose.assert_not_called()
+            runtime.reload.assert_called_once()
+
+    def test_first_vpn_start_sets_credentials_before_starting_panel(self):
+        with fixture() as (_, runtime):
+            events = []
+            runtime.gateway = Mock()
+            runtime.sites = Mock()
+            runtime.compose = Mock(side_effect=lambda *args, **kwargs: events.append(args))
+            runtime.up = Mock(side_effect=lambda services: events.append(("up", *services)))
+            runtime.start("vpn")
+            first_up = events.index(("up", "xui"))
+            self.assertTrue(any("ADMIN_USER" in args for args in events[:first_up]))
+
+    def test_restart_fresh_vpn_initializes_and_disabled_restart_has_no_gateway_effect(self):
+        with fixture() as (_, runtime):
+            runtime.start = Mock()
+            runtime.gateway = Mock()
+            runtime.restart("vpn")
+            runtime.start.assert_called_once_with("vpn")
+            runtime.config["enabled"] = []
+            with self.assertRaises(StackError):
+                runtime.restart("blog")
+            runtime.gateway.assert_not_called()
+
+    def test_partial_cpa_install_must_return_to_official_installer(self):
+        with fixture() as (store, runtime):
+            write(runtime.cpa_dir / "compose.yaml", "services: {}")
+            write(runtime.cpa_dir / ".env", "")
+            self.assertTrue(runtime.cpa_installed())
+            self.assertFalse(runtime.cpa_ready())
+            runtime.gateway = Mock()
+            runtime.cpa_override = Mock()
+            runtime.up = Mock()
+            runtime.sites = Mock()
+            runtime.official_installer = Mock(return_value=False)
+            runtime.start("cpa", from_all=True)
+            runtime.official_installer.assert_called_once()
+            runtime.up.assert_not_called()
+            runtime.sites.assert_not_called()
+
+    def test_official_installer_failure_is_not_reported_as_success(self):
+        with fixture() as (_, runtime):
+            runtime.cpa_override = Mock()
+            runtime.cpa_installed = Mock(return_value=False)
+            runtime.containers = Mock()
+            with patch("sys.stdin.isatty", return_value=True), patch("manager.runtime.urllib.request.urlopen") as download:
+                download.return_value.__enter__.return_value.read.return_value = b"#!/bin/bash\nexit 23\n"
+                with patch("manager.runtime.run", side_effect=[subprocess.CompletedProcess([], 0), subprocess.CompletedProcess([], 23)]):
+                    with self.assertRaisesRegex(StackError, "23"):
+                        runtime.official_installer()
+            runtime.containers.assert_not_called()
+
+    def test_missing_vpn_database_blocks_start_and_restart_before_gateway_changes(self):
+        with fixture() as (store, runtime):
+            store.mark("vpn_ready")
+            store.mark("vpn_admin_ready")
+            runtime.gateway = Mock()
+            for action in (runtime.start, runtime.restart):
+                with self.assertRaisesRegex(StackError, "数据库缺失"):
+                    action("vpn")
+            runtime.gateway.assert_not_called()
+
+    def test_restart_all_includes_gateway_without_enabled_businesses(self):
+        with fixture() as (_, runtime):
+            runtime.config["enabled"] = []
+            runtime.gateway = Mock()
+            runtime.compose = Mock()
+            runtime.up = Mock()
+            runtime.restart("all")
+            runtime.compose.assert_called_once_with("restart", "nginx-ui")
+            runtime.up.assert_called_once_with(["nginx-ui"])
 
 
 @unittest.skipUnless(shutil.which("docker"), "Docker Compose CLI is not installed")
 class ComposeTest(unittest.TestCase):
     def test_core_services_ports_and_dependency_contract(self):
         with fixture() as (_, runtime):
-            merged = json.loads(runtime.compose("config", "--format", "json", capture=True).stdout)
+            with patch.dict(os.environ, GATEWAY_NETWORK="wrong-network", BLOG_IMAGE="wrong/image", VPN_PASSWORD="wrong-password"):
+                merged = json.loads(runtime.compose("config", "--format", "json", capture=True).stdout)
+            self.assertEqual(runtime.config["network"]["name"], merged["networks"]["gateway"]["name"])
+            self.assertEqual(runtime.config["images"]["blog"], merged["services"]["rurublog"]["image"])
+            self.assertNotEqual("wrong-password", merged["services"]["panel-init"]["environment"]["XUI_ADMIN_PASSWORD"])
+            self.assertEqual("/etc/gost", merged["services"]["gost"]["volumes"][0]["target"])
             self.assertEqual(set(merged["services"]),
                 {"nginx-ui", "xui", "gost", "rurublog", "certbot", "panel-init"})
             for service in ("xui", "gost", "rurublog"):

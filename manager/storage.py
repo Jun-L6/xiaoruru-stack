@@ -1,5 +1,5 @@
 """Validated configuration and private, atomic runtime file generation."""
-import copy
+import hashlib
 import ipaddress
 import json
 import os
@@ -38,6 +38,9 @@ def write(path, content, mode=0o600, overwrite=True):
     directory(path.parent)
     if path.exists() and not overwrite:
         return
+    if path.is_file() and path.read_text() == content:
+        os.chmod(path, mode)
+        return
     descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".", dir=path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:
@@ -56,22 +59,25 @@ def json_write(path, value, **kwargs):
 
 
 def validate(config):
-    if config.get("schema") != 1:
+    if not isinstance(config, dict) or config.get("schema") != 1:
         raise StackError("部署配置版本不支持。")
     enabled = config.get("enabled", [])
-    if not isinstance(enabled, list) or len(set(enabled)) != len(enabled) or set(enabled) - set(MODULES):
+    if (not isinstance(enabled, list) or not all(isinstance(item, str) for item in enabled)
+            or len(set(enabled)) != len(enabled) or set(enabled) - set(MODULES)):
         raise StackError("enabled 只能包含 vpn、cpa、blog，不能重复。")
     if type(config.get("gost")) is not bool:
         raise StackError("gost 必须为 true 或 false。")
     if config["gost"] and "vpn" not in enabled:
         raise StackError("正向代理属于 VPN，请同时启用 VPN。")
-    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", config.get("email", "")):
+    if not isinstance(config.get("email"), str) or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", config["email"]):
         raise StackError("请填写有效的证书通知邮箱。")
     values = config.get("domains", {})
     expected = ("gateway", "vpn", "cpamp", "cpa_api", "blog", "gost")
+    if not isinstance(values, dict) or set(values) != set(expected):
+        raise StackError("domains 必须包含 gateway、vpn、cpamp、cpa_api、blog、gost。")
     for key in expected:
         domain = values.get(key, "")
-        if len(domain) > 253 or "." not in domain or not all(
+        if not isinstance(domain, str) or len(domain) > 253 or "." not in domain or not all(
             re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
             for label in domain.split(".")
         ):
@@ -79,16 +85,20 @@ def validate(config):
     if len(set(values.values())) != len(expected):
         raise StackError("各入口请使用不同域名。")
     network = config.get("network", {})
-    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}", network.get("name", "")):
+    if (not isinstance(network, dict) or not isinstance(network.get("name"), str)
+            or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}", network["name"])):
         raise StackError("Docker 网络名不合法。")
     try:
         subnet = ipaddress.ip_network(network["subnet"], strict=True)
-        if subnet.version != 4 or not subnet.is_private or not 16 <= subnet.prefixlen <= 28:
+        private = [ipaddress.ip_network(value) for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
+        if subnet.version != 4 or not any(subnet.subnet_of(net) for net in private) or not 16 <= subnet.prefixlen <= 28:
             raise ValueError()
-    except (ValueError, KeyError):
+    except (ValueError, KeyError, TypeError):
         raise StackError("网络需要独立的私有 IPv4 子网，前缀范围 /16 至 /28。")
-    for image in config.get("images", {}).values():
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9./_:@-]+", image):
+    if not isinstance(config.get("images"), dict):
+        raise StackError("images 必须是镜像配置对象。")
+    for image in config["images"].values():
+        if not isinstance(image, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9./_:@-]+", image):
             raise StackError("镜像地址包含无效字符。")
     for key in ("nginx_ui", "xui", "gost", "certbot", "panel_init", "blog"):
         if key not in config.get("images", {}):
@@ -117,7 +127,10 @@ class Store:
 
     def state(self):
         path = self.system / "state.json"
-        return json.loads(safe_path(path).read_text()) if path.exists() else {}
+        state = json.loads(safe_path(path).read_text()) if path.exists() else {}
+        if not isinstance(state, dict):
+            raise StackError("data/system/state.json 格式错误。")
+        return state
 
     def mark(self, key, value=True):
         state = self.state()
@@ -135,7 +148,7 @@ class Store:
         private = self.system / "secrets.json"
         if not private.exists():
             # An existing database must not be silently assigned fresh credentials.
-            if any((self.data / "blog/runtime").iterdir()) or any((self.data / "vpn/xui").iterdir()):
+            if any(any((self.data / path).iterdir()) for path in ("blog/runtime", "vpn/xui", "gateway/nginx-ui")):
                 raise StackError("存在业务数据但缺少 data/system/secrets.json，请提供对应配置。")
             json_write(private, {
                 "gateway_username": "admin", "gateway_password": secrets.token_hex(24),
@@ -144,7 +157,23 @@ class Store:
                 "blog_admin": secrets.token_hex(24), "blog_db": secrets.token_hex(24),
             })
         credentials = json.loads(safe_path(private).read_text())
+        required = {"gateway_username", "gateway_password", "vpn_username", "vpn_password",
+                    "gost_username", "gost_password", "blog_admin", "blog_db"}
+        if (not isinstance(credentials, dict) or set(credentials) != required
+                or any(not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_.@+-]{1,128}", value)
+                       for value in credentials.values())):
+            raise StackError("secrets.json 凭据字段缺失或格式错误；请保留初始化生成的完整凭据文件。")
+        tls = f"/etc/letsencrypt/live/{CERT_NAME}"
+        gost_config = {"services": [{
+            "name": "https-forward-proxy", "addr": ":9443",
+            "handler": {"type": "http", "auth": {
+                "username": credentials["gost_username"], "password": credentials["gost_password"]}},
+            "listener": {"type": "tls", "tls": {
+                "certFile": tls + "/fullchain.pem", "keyFile": tls + "/privkey.pem"}}
+        }]}
+        json_write(self.data / "vpn/gost/config.json", gost_config)
         env = {
+            "GOST_CONFIG_HASH": hashlib.sha256(json.dumps(gost_config, sort_keys=True).encode()).hexdigest(),
             "GATEWAY_NETWORK": config["network"]["name"],
             "DOCKER_SUBNET": config["network"]["subnet"], "LE_EMAIL": config["email"],
             "BLOG_DOMAIN": config["domains"]["blog"], "VPN_DOMAIN": config["domains"]["vpn"],
@@ -168,14 +197,6 @@ class Store:
         if os.geteuid() == 0:
             for path in (self.data / "blog/config", self.data / "blog/runtime", blog_config):
                 os.chown(path, 10001, 10001)
-        tls = f"/etc/letsencrypt/live/{CERT_NAME}"
-        json_write(self.data / "vpn/gost/config.json", {"services": [{
-            "name": "https-forward-proxy", "addr": ":9443",
-            "handler": {"type": "http", "auth": {
-                "username": credentials["gost_username"], "password": credentials["gost_password"]}},
-            "listener": {"type": "tls", "tls": {
-                "certFile": tls + "/fullchain.pem", "keyFile": tls + "/privkey.pem"}}
-        }]})
 
     def domains(self, config):
         keys = ["gateway"]

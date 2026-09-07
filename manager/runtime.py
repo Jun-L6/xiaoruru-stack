@@ -7,7 +7,6 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 import urllib.request
 
 from .storage import CERT_NAME, MODULES, StackError, Store, directory, safe_path, write
@@ -22,7 +21,9 @@ SITES = {"gateway": ["10-nginx-ui"], "vpn": ["20-3x-ui"],
 def clean_env():
     # Neither a user's Compose variables nor another CPA install may redirect this stack.
     return {key: value for key, value in os.environ.items()
-            if not key.startswith(("COMPOSE_", "CPAMP_"))}
+            if not key.startswith(("COMPOSE_", "CPAMP_", "CPA_", "GATEWAY_", "VPN_", "BLOG_",
+                                   "NGINX_UI_", "XUI_", "GOST_", "CERTBOT_", "PANEL_INIT_"))
+            and key not in ("DOCKER_SUBNET", "LE_EMAIL")}
 
 
 def run(args, cwd=None, capture=False, check=True, timeout=900, env=None):
@@ -40,6 +41,9 @@ def run(args, cwd=None, capture=False, check=True, timeout=900, env=None):
 
 
 class Runtime:
+    project = "xiaoruru"
+    cpa_project = "xiaoruru-cpa"
+
     def __init__(self, store=None):
         self.store = store or Store()
         self.root = self.store.root
@@ -48,11 +52,13 @@ class Runtime:
 
     def compose(self, *args, cpa=False, **kwargs):
         if cpa:
-            base = ["docker", "compose", "-p", "xiaoruru-cpa"]
+            base = ["docker", "compose", "--env-file", str(self.cpa_dir / ".env"),
+                    "-f", str(self.cpa_dir / "compose.yaml"),
+                    "-f", str(self.cpa_dir / "compose.override.yaml"), "-p", self.cpa_project]
             cwd = self.cpa_dir
         else:
             base = ["docker", "compose", "--env-file", str(self.store.system / "compose.env"),
-                    "-f", str(self.root / "compose.yaml"), "-p", "xiaoruru",
+                    "-f", str(self.root / "compose.yaml"), "-p", self.project,
                     "--profile", "vpn", "--profile", "proxy", "--profile", "blog", "--profile", "tools"]
             cwd = self.root
         if kwargs.get("capture") and kwargs.get("check", True):
@@ -100,7 +106,7 @@ class Runtime:
             row = json.loads(line)
             labels = dict(item.split("=", 1) for item in row.get("Labels", "").split(",") if "=" in item)
             project = labels.get("com.docker.compose.project")
-            if project not in ("xiaoruru", "xiaoruru-cpa") or labels.get("com.docker.compose.oneoff") == "True":
+            if project not in (self.project, self.cpa_project) or labels.get("com.docker.compose.oneoff", "").lower() == "true":
                 continue
             row["service"] = labels.get("com.docker.compose.service")
             row["project"] = project
@@ -108,7 +114,7 @@ class Runtime:
         return rows
 
     def running(self, module):
-        project = "xiaoruru-cpa" if module == "cpa" else "xiaoruru"
+        project = self.cpa_project if module == "cpa" else self.project
         return any(row["project"] == project and row["service"] in SERVICES[module]
                    and row.get("State") == "running" for row in self.containers())
 
@@ -119,7 +125,7 @@ class Runtime:
             expected = SERVICES[module][:]
             if module == "vpn" and not self.config["gost"]:
                 expected.remove("gost")
-            project = "xiaoruru-cpa" if module == "cpa" else "xiaoruru"
+            project = self.cpa_project if module == "cpa" else self.project
             for service in expected:
                 match = next((r for r in rows if r["service"] == service and r["project"] == project), None)
                 state = match["Status"] if match else "未创建"
@@ -139,6 +145,13 @@ class Runtime:
         if not cpa:
             args += ["--build" if build else "--no-build"]
         self.compose(*args, *services, cpa=cpa)
+        certificate = self.store.data / f"gateway/certificates/live/{CERT_NAME}/fullchain.pem"
+        if not cpa and certificate.is_file() and set(services) & {"xui", "gost"}:
+            applied = self.store.state().get("certificate_applied", {})
+            digest = hashlib.sha256(certificate.read_bytes()).hexdigest()
+            for service in set(services) & {"xui", "gost"}:
+                applied[service] = digest
+            self.store.mark("certificate_applied", applied)
 
     def seed_gateway(self):
         nginx = self.store.data / "gateway/nginx"
@@ -190,14 +203,49 @@ class Runtime:
             raise StackError("Nginx 模板包含未填充的变量。")
         return content
 
-    def sites(self, module, enabled=True, replace=False):
+    def sites(self, module, enabled=True, replace=False, offline=False):
         nginx = self.store.data / "gateway/nginx"
-        for name in SITES[module]:
-            path = nginx / "sites-available" / (name + ".conf")
-            if enabled:
-                write(path, self.render_site(name), 0o644, overwrite=replace)
-            self.site_link(name, enabled)
-        self.reload()
+        snapshots = []
+        try:
+            for name in SITES[module]:
+                path = safe_path(nginx / "sites-available" / (name + ".conf"))
+                link = nginx / "sites-enabled" / (name + ".conf")
+                # Validate ownership before recording or changing an enabled link.
+                self.site_link(name, link.is_symlink())
+                snapshots.append((name, path.read_text() if path.exists() else None,
+                                  os.readlink(link) if link.is_symlink() else None))
+                if enabled:
+                    write(path, self.render_site(name), 0o644, overwrite=replace)
+                self.site_link(name, enabled)
+            if offline:
+                self.compose("run", "--rm", "--no-deps", "--entrypoint", "nginx", "nginx-ui", "-t", capture=True)
+            else:
+                self.reload()
+        except BaseException:
+            # A failed nginx -t must not leave a newly invalid configuration on disk.
+            for name, content, target in reversed(snapshots):
+                path = nginx / "sites-available" / (name + ".conf")
+                link = nginx / "sites-enabled" / (name + ".conf")
+                self.site_link(name, False)
+                if content is None:
+                    if path.is_file():
+                        safe_path(path).unlink()
+                else:
+                    write(path, content, 0o644)
+                if target is not None:
+                    link.symlink_to(target)
+            raise
+
+    def repair_sites(self, module):
+        # Repair the selected disk configuration before trying to start/reload a broken gateway.
+        certificate = self.store.data / f"gateway/certificates/live/{CERT_NAME}/fullchain.pem"
+        if self.store.state().get("gateway_seeded") and certificate.is_file():
+            self.network()
+            self.sites(module, replace=True, offline=not self.running("gateway"))
+            self.gateway()
+        else:
+            self.gateway()
+            self.sites(module, replace=True)
 
     def reload(self):
         self.compose("exec", "-T", "nginx-ui", "nginx", "-t", capture=True)
@@ -207,7 +255,7 @@ class Runtime:
         certificate = self.store.data / f"gateway/certificates/live/{CERT_NAME}/fullchain.pem"
         if not certificate.exists():
             return set(), False
-        result = run(["openssl", "x509", "-in", str(certificate), "-noout", "-ext", "subjectAltName"],
+        result = run(["openssl", "x509", "-in", str(certificate), "-noout", "-text"],
                      capture=True)
         names = set(re.findall(r"DNS:([a-zA-Z0-9.*-]+)", result.stdout))
         valid = run(["openssl", "x509", "-in", str(certificate), "-noout", "-checkend", "2592000"],
@@ -218,6 +266,7 @@ class Runtime:
         existing, valid = self.certificate_domains()
         wanted = set(self.store.domains(self.config)) | existing
         if not renew and valid and wanted <= existing:
+            self.apply_certificate()
             return
         print("准备证书：" + ", ".join(sorted(wanted)))
         print("这些域名的 DNS 必须指向本机，公网 TCP 80 必须可访问。")
@@ -232,12 +281,28 @@ class Runtime:
             args += ["-d", domain]
         self.compose(*args)
         if certificate.read_bytes() == before:
-            print("证书尚未到续期时间；没有重启 VPN 或代理。")
-            return
-        self.reload()
+            print("证书文件未变化；仅补做此前未完成的证书加载。")
+        self.apply_certificate()
+
+    def apply_certificate(self):
+        live = self.store.data / f"gateway/certificates/live/{CERT_NAME}"
+        if not (live / "fullchain.pem").is_file() or not (live / "privkey.pem").is_file():
+            raise StackError("共享证书或私钥缺失，请检查 data/gateway/certificates。")
+        digest = hashlib.sha256((live / "fullchain.pem").read_bytes()).hexdigest()
+        applied = self.store.state().get("certificate_applied", {})
+        if applied.get("nginx-ui") != digest:
+            self.reload()
+            applied["nginx-ui"] = digest
+            self.store.mark("certificate_applied", applied)
+        rows = self.containers()
         for service in ("xui", "gost"):
-            if any(row["service"] == service and row.get("State") == "running" for row in self.containers()):
+            if applied.get(service) != digest and any(
+                    row["project"] == self.project and row["service"] == service
+                    and row.get("State") == "running" for row in rows):
                 self.compose("restart", service)
+                self.up([service])
+                applied[service] = digest
+                self.store.mark("certificate_applied", applied)
 
     def gateway(self):
         self.network()
@@ -249,6 +314,11 @@ class Runtime:
 
     def cpa_installed(self):
         return (self.cpa_dir / "compose.yaml").is_file() and (self.cpa_dir / ".env").is_file()
+
+    def cpa_ready(self):
+        return (self.cpa_installed() and self.store.state().get("cpa_ready", False)
+                and all((self.cpa_dir / path).is_file()
+                        for path in ("manager/usage.sqlite", "manager/data.key", "secrets/cpamp-admin-key")))
 
     def cpa_override(self):
         content = (self.root / "config/cpa.override.yaml").read_text().replace(
@@ -300,23 +370,43 @@ class Runtime:
         env = clean_env()
         env.update(CPAMP_LANG="zh-CN", CPAMP_INSTALL_DIR=str(self.cpa_dir),
                    CPAMP_INSTALL_MODE="stack", CPAMP_DEPLOY_METHOD="docker",
-                   CPAMP_PROJECT_NAME="xiaoruru-cpa")
+                   CPAMP_PROJECT_NAME=self.cpa_project)
         result = run(["bash", str(installer)], cwd=self.cpa_dir, env=env, check=False, timeout=None)
         if self.cpa_installed():
             self.validate_cpa()
         if result.returncode:
-            print(f"官方安装器已退出（{result.returncode}）。未代替你继续操作，请查看实际容器状态。")
-            return False
+            raise StackError(f"官方安装器未完成（退出码 {result.returncode}）。请再次 start cpa，在官方菜单中继续安装或修复。")
         if not self.cpa_installed():
             print("官方安装器已退出，CPA 尚未安装。")
             return False
         # The official installer owns up/recreate. Exiting its menu must not start stopped services.
         running = {row["service"] for row in self.containers()
-                   if row["project"] == "xiaoruru-cpa" and row.get("State") == "running"}
+                   if row["project"] == self.cpa_project and row.get("State") == "running"}
         if not set(SERVICES["cpa"]) <= running:
             print("CPA 尚未全部运行，未自动补启动。可再次 start cpa 选择操作。")
             return False
+        if not all((self.cpa_dir / path).is_file()
+                   for path in ("manager/usage.sqlite", "manager/data.key", "secrets/cpamp-admin-key")):
+            raise StackError("CPA 初始化数据不完整，请再次 start cpa，使用官方安装器完成安装或修复。")
+        self.verify_cpa_running()
+        self.store.mark("cpa_ready")
         return True
+
+    def verify_cpa_running(self):
+        rows = [row for row in self.containers() if row["project"] == self.cpa_project]
+        for service in SERVICES["cpa"]:
+            row = next((row for row in rows if row["service"] == service and row.get("State") == "running"), None)
+            if not row:
+                raise StackError(f"CPA 容器未运行：{service}，请在官方安装器中继续操作。")
+            info = json.loads(run(["docker", "inspect", row["ID"]], capture=True).stdout)[0]
+            networks = info["NetworkSettings"]["Networks"]
+            mounts = info["Mounts"]
+            if (self.config["network"]["name"] not in networks
+                    or any(info["NetworkSettings"].get("Ports", {}).values())
+                    or any(mount["Type"] != "bind" or not Path(mount["Source"]).resolve().is_relative_to(self.cpa_dir.resolve())
+                           for mount in mounts)
+                    or info["State"].get("Health", {}).get("Status", "healthy") != "healthy"):
+                raise StackError(f"CPA 容器健康、网络或挂载检查失败：{service}。请在官方安装器中应用配置后重试。")
 
     def start(self, module, from_all=False, choose=None):
         if module == "all":
@@ -327,12 +417,13 @@ class Runtime:
             return
         if module != "gateway" and module not in self.config["enabled"]:
             raise StackError(f"{module} 未启用，请先执行 init {module}。")
+        if module == "vpn":
+            self.require_vpn_data()
         self.gateway()
         if module == "gateway":
             self.links(module)
             return
         if module == "vpn":
-            self.up(["xui"])
             state = self.store.state()
             if not state.get("vpn_admin_ready"):
                 self.compose("stop", "xui")
@@ -342,7 +433,7 @@ class Runtime:
                              'exec /app/x-ui setting -username "$ADMIN_USER" -password "$ADMIN_PASSWORD" -webBasePath / -listenIP 0.0.0.0',
                              capture=True, env={**clean_env(), **self.admin_env()})
                 self.store.mark("vpn_admin_ready")
-                self.up(["xui"])
+            self.up(["xui"])
             if not state.get("vpn_ready"):
                 self.compose("run", "--rm", "--no-deps", "panel-init", capture=True)
                 self.compose("restart", "xui")
@@ -360,7 +451,8 @@ class Runtime:
             self.up(["rurublog"])
         elif module == "cpa":
             self.cpa_override()
-            if not self.cpa_installed():
+            if not self.cpa_ready():
+                print("CPA 尚未完成初始化，进入官方安装器继续安装或修复。")
                 if not self.official_installer():
                     return
             elif from_all:
@@ -385,28 +477,50 @@ class Runtime:
         credentials = json.loads((self.store.system / "secrets.json").read_text())
         return {"ADMIN_USER": credentials["vpn_username"], "ADMIN_PASSWORD": credentials["vpn_password"]}
 
+    def require_vpn_data(self):
+        state = self.store.state()
+        if (state.get("vpn_admin_ready") or state.get("vpn_ready")) and not (self.store.data / "vpn/xui/x-ui.db").is_file():
+            raise StackError("VPN 初始化状态存在但数据库缺失，请检查 data/vpn/xui 的完整性。")
+        if state.get("vpn_ready") and not state.get("vpn_admin_ready"):
+            raise StackError("VPN 初始化状态不完整，请检查 data/system/state.json。")
+
     def stop(self, module):
-        if module == "all":
-            if self.cpa_installed():
-                self.compose("stop", *SERVICES["cpa"], cpa=True)
-            self.compose("stop", "rurublog", "gost", "xui", "nginx-ui")
-            print("所有功能已停止；配置与数据保留。")
-            return
-        if module == "gateway" and any(self.running(item) for item in MODULES):
+        rows = self.containers()
+        if module == "gateway" and any(
+                row["service"] in SERVICES[item] and row["project"] == (self.cpa_project if item == "cpa" else self.project)
+                and row.get("State") in ("running", "restarting", "paused") for row in rows for item in MODULES):
             raise StackError("业务仍在运行，不能单独停止网关。请先停止业务，或使用 stop all。")
-        if module != "gateway" and self.running("gateway"):
-            self.sites(module, enabled=False)
-        if module == "cpa" and not self.cpa_installed():
-            print("CPA 尚未安装，无需停止。")
-            return
-        self.compose("stop", *SERVICES[module], cpa=module == "cpa")
+        selected = ("gateway", *MODULES) if module == "all" else (module,)
+        targets = [row["ID"] for row in rows
+                   if any(row["project"] == (self.cpa_project if item == "cpa" else self.project)
+                          and row["service"] in SERVICES[item] for item in selected)
+                   and row.get("State") in ("running", "restarting", "paused")]
+        if targets:
+            if not all(re.fullmatch(r"[a-f0-9]{12,64}", item) for item in targets):
+                raise StackError("Docker 返回的容器 ID 异常，未执行停止。")
+            run(["docker", "stop", "--timeout", "30", *targets], capture=True, timeout=180)
+        if module not in ("gateway", "all") and self.running("gateway"):
+            try:
+                self.sites(module, enabled=False)
+            except (StackError, OSError):
+                print("容器已停止，但网关站点未能停用；请使用 doctor 检查 Nginx 配置。")
         print(f"{module} 已停止；数据保留。")
 
     def restart(self, module):
         if module == "all":
+            self.restart("gateway")
             for item in self.config["enabled"]:
                 self.restart(item)
             return
+        if module != "gateway" and module not in self.config["enabled"]:
+            raise StackError(f"{module} 未启用。")
+        if module == "vpn":
+            self.require_vpn_data()
+        if module == "vpn" and not self.store.state().get("vpn_ready"):
+            self.start("vpn")
+            return
+        if module == "cpa" and not self.cpa_ready():
+            raise StackError("CPA 尚未完成安装，请使用 start cpa。")
         self.gateway()
         if module == "gateway":
             self.compose("restart", "nginx-ui")
@@ -442,6 +556,8 @@ class Runtime:
             print("网关配置与健康检查通过。")
         if self.cpa_installed():
             self.validate_cpa()
+            if self.running("cpa"):
+                self.verify_cpa_running()
             print("CPA 内网与数据目录检查通过。")
         self.status()
 

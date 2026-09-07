@@ -79,6 +79,9 @@ def initialize(store, module=None, source=None):
         raise StackError("初始化功能名只能为 gateway、vpn、cpa、blog。")
     exists = store.config_path.exists()
     config = store.load() if exists else store.defaults()
+    if not exists and module is not None and not source:
+        config["enabled"] = []
+        config["gost"] = False
     previous = copy.deepcopy(config)
     if source:
         config = json.loads(safe_path(Path(source).absolute()).read_text())
@@ -143,8 +146,10 @@ def tools_menu(runtime, action, yes_flag=False):
     if action == "doctor":
         runtime.doctor()
     elif action == "renew":
+        runtime.preflight(prepare=False)
         runtime.renew()
     elif action == "timer":
+        runtime.preflight(prepare=False)
         runtime.install_timer()
     elif action == "sites":
         selected = choice("选择要重新生成的反代（会覆盖该站点的 Nginx UI 编辑）",
@@ -154,8 +159,8 @@ def tools_menu(runtime, action, yes_flag=False):
         module = ["gateway", "vpn", "cpa", "blog"][selected - 1]
         if not yes_flag and not yes(f"确认替换 {module} 站点配置", False):
             return
-        runtime.gateway()
-        runtime.sites(module, replace=True)
+        runtime.preflight()
+        runtime.repair_sites(module)
     else:
         raise StackError("工具支持 doctor、renew、timer、sites。")
 
@@ -172,6 +177,21 @@ def execute(args, store=None):
         return
     if command == "update" and module == "cpa":
         raise StackError("CPA 由官方安装器管理，请运行 start cpa，在官方菜单中选择升级。")
+    if command in ("start", "stop", "restart") and module not in (*SERVICES.keys(), "all"):
+        raise StackError("请指定 gateway、vpn、cpa、blog 或 all。")
+    if command == "build" and module != "blog":
+        raise StackError("只有博客需要构建：build blog。CPA 使用官方预构建镜像。")
+    if command == "update" and module not in ("gateway", "vpn"):
+        raise StackError("update 支持 gateway、vpn；博客使用 build blog 后 start blog。")
+    if command == "tools" and module not in (None, "doctor", "renew", "timer", "sites"):
+        raise StackError("工具支持 doctor、renew、timer、sites。")
+    if command == "stop" and module == "all" and not args.yes:
+        if not sys.stdin.isatty() or not yes("停止所有业务与网关（保留数据）", False):
+            print("已取消。无人值守执行请显式使用 --yes。")
+            return
+    if command == "update" and not args.yes and (not sys.stdin.isatty() or not yes("拉取配置中的镜像并应用更新", False)):
+        print("已取消。")
+        return
     runtime = Runtime(store)
     if command == "status":
         runtime.status()
@@ -185,34 +205,27 @@ def execute(args, store=None):
         if command == "doctor":
             runtime.doctor()
             return
-        runtime.preflight(prepare=not (command == "tools" and module in ("renew", "doctor")))
+        if command == "tools":
+            tools_menu(runtime, module, args.yes)
+            return
+        if command == "stop":
+            # Stopping existing containers must not depend on valid Compose/Nginx files or regenerate secrets.
+            runtime.stop(module)
+            return
+        runtime.preflight()
         if command in ("start", "stop", "restart"):
-            if module not in (*SERVICES.keys(), "all"):
-                raise StackError("请指定 gateway、vpn、cpa、blog 或 all。")
-            if command == "stop" and module == "all" and not args.yes:
-                if not sys.stdin.isatty() or not yes("停止所有业务与网关（保留数据）", False):
-                    print("已取消。无人值守执行请显式使用 --yes。")
-                    return
             if command == "start":
                 runtime.start(module, choose=choice)
             else:
                 getattr(runtime, command)(module)
         elif command == "build":
-            if module != "blog":
-                raise StackError("只有博客需要构建：build blog。CPA 使用官方预构建镜像。")
             runtime.build_blog()
         elif command == "update":
-            if module not in ("gateway", "vpn"):
-                raise StackError("update 支持 gateway、vpn；博客使用 build blog 后 start blog。")
-            if not args.yes and (not sys.stdin.isatty() or not yes("拉取配置中的镜像并应用更新", False)):
-                return
             services = SERVICES[module][:]
             if module == "vpn" and not runtime.config["gost"]:
                 services.remove("gost")
             runtime.compose("pull", *services)
             runtime.start(module)
-        elif command == "tools":
-            tools_menu(runtime, module, args.yes)
         else:
             raise StackError("不支持的操作，请使用 --help。")
 

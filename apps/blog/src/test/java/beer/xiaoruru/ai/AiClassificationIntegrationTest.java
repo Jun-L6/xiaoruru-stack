@@ -44,7 +44,7 @@ class AiClassificationIntegrationTest {
     void appliesHighConfidenceAndMarksMiddleConfidenceForReview() {
         Long javaId = categories.findBySlug("java").orElseThrow().getId();
         Article high = article("ai-high-confidence", false);
-        when(classifier.classify(any())).thenReturn(new ClassificationResult(javaId, 0.91,
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(javaId, 0.91,
                 List.of("Java", "JVM"), "主题明确", "AI 摘要", "SEO", null));
         service.requestNow(high.getId());
         service.processNext();
@@ -55,7 +55,7 @@ class AiClassificationIntegrationTest {
         assertThat(applied.getTags()).extracting(tag -> tag.getName()).containsExactlyInAnyOrder("Java", "JVM");
 
         Article middle = article("ai-middle-confidence", false);
-        when(classifier.classify(any())).thenReturn(new ClassificationResult(javaId, 0.70,
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(javaId, 0.70,
                 List.of("Spring", "JPA"), "需要复核", null, null, null));
         service.requestNow(middle.getId());
         service.processNext();
@@ -67,7 +67,7 @@ class AiClassificationIntegrationTest {
     void lowConfidenceFallsBackToUncategorized() {
         Long javaId = categories.findBySlug("java").orElseThrow().getId();
         Article article = article("ai-low-confidence", false);
-        when(classifier.classify(any())).thenReturn(new ClassificationResult(javaId, 0.20,
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(javaId, 0.20,
                 List.of(), "无法确定", null, null, "新分类建议"));
         service.requestNow(article.getId());
         service.processNext();
@@ -84,7 +84,7 @@ class AiClassificationIntegrationTest {
     @Test
     void invalidOutputAndTimeoutFailWithoutAutomaticRetriesOrBlockingArticle() {
         Article invalid = article("ai-invalid-output", false);
-        when(classifier.classify(any())).thenReturn(new ClassificationResult(null, 2.0,
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(null, 2.0,
                 List.of("OnlyOne"), "bad", null, null, null));
         AiJob invalidJob = service.requestNow(invalid.getId());
         service.processNext();
@@ -95,7 +95,7 @@ class AiClassificationIntegrationTest {
         afterInvalid.setAvailableAt(java.time.Instant.now().plusSeconds(3600));
         jobs.saveAndFlush(afterInvalid);
         Article timeout = article("ai-timeout", false);
-        when(classifier.classify(any())).thenAnswer(invocation -> {
+        when(classifier.classify(any(), any())).thenAnswer(invocation -> {
             Thread.sleep(5_000);
             return null;
         });
@@ -114,7 +114,7 @@ class AiClassificationIntegrationTest {
         articleService.save(new ArticleCommand(article.getId(), article.getTitle(), article.getSlug(),
                 article.getSummary(), article.getContentType(), article.getContent(), article.getCategory().getId(),
                 "Manual", false, true, "", ""));
-        when(classifier.classify(any())).thenReturn(new ClassificationResult(javaId, 0.99,
+        when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(javaId, 0.99,
                 List.of("Java", "JVM"), "would overwrite", null, null, null));
         service.processNext();
 
@@ -122,6 +122,54 @@ class AiClassificationIntegrationTest {
         Article unchanged = articles.findDetailedById(article.getId()).orElseThrow();
         assertThat(unchanged.isClassificationLocked()).isTrue();
         assertThat(unchanged.getTags()).extracting(tag -> tag.getName()).containsExactly("Manual");
+        org.mockito.Mockito.verifyNoInteractions(classifier);
+    }
+
+    @Test
+    void obsoleteContentIsCancelledBeforeMakingAPaidRequest() {
+        Article article = article("ai-obsolete-body", false);
+        AiJob job = service.enqueue(article.getId(), article.getContentHash(), java.time.Duration.ZERO);
+        article.setContentHash("changed-content");
+        articles.saveAndFlush(article);
+        service.processNext();
+        assertThat(jobs.findById(job.getId()).orElseThrow().getStatus()).isEqualTo(AiJobStatus.CANCELLED);
+        org.mockito.Mockito.verifyNoInteractions(classifier);
+    }
+
+    @Test
+    void immediateRequestBringsForwardDelayedJobWithoutDuplicatingIt() {
+        Article article = article("ai-immediate", false);
+        AiJob delayed = service.enqueue(article.getId(), article.getContentHash(), java.time.Duration.ofHours(1));
+        AiJob immediate = service.requestNow(article.getId());
+        assertThat(immediate.getId()).isEqualTo(delayed.getId());
+        assertThat(immediate.getAvailableAt()).isBeforeOrEqualTo(java.time.Instant.now());
+        when(classifier.classify(any(), any())).thenThrow(new IllegalStateException("test failure"));
+        service.processNext();
+        assertThat(jobs.findById(delayed.getId()).orElseThrow().getStatus()).isEqualTo(AiJobStatus.FAILED);
+    }
+
+    @Test
+    void changingSettingsDuringCallKeepsOriginalAuditAndManualLock() {
+        Article article = article("ai-in-flight-settings", false);
+        AiJob job = service.requestNow(article.getId());
+        when(classifier.classify(any(), any())).thenAnswer(invocation -> {
+            AiSettingsService.Connection connection = invocation.getArgument(1);
+            assertThat(connection.model()).isEqualTo("test-model");
+            settings.save(new AiSettingsService.Form("cpa", "", "changed-key", "changed-model",
+                    "/v1/chat/completions", 20, null, false));
+            Article locked = articles.findById(article.getId()).orElseThrow();
+            locked.setClassificationLocked(true);
+            locked.setClassificationStatus(ClassificationStatus.APPLIED);
+            articles.saveAndFlush(locked);
+            throw new IllegalStateException("upstream failed");
+        });
+        service.processNext();
+        assertThat(articles.findById(article.getId()).orElseThrow().getClassificationStatus())
+                .isEqualTo(ClassificationStatus.APPLIED);
+        assertThat(logs.findTop100ByOrderByCreatedAtDesc()).anySatisfy(execution -> {
+            assertThat(execution.getJob().getId()).isEqualTo(job.getId());
+            assertThat(execution.getModel()).isEqualTo("test-model");
+        });
     }
 
     private Article article(String slug, boolean locked) {

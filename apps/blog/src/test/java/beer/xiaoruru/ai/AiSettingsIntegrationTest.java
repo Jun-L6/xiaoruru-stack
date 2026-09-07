@@ -130,4 +130,86 @@ class AiSettingsIntegrationTest {
                     .hasMessageContaining("HTTP 401").hasMessageNotContaining("TOP-SECRET");
         } finally { server.stop(0); }
     }
+
+    @Test void invalidAddressesAndHeaderKeysProduceValidationErrors() {
+        for (String url : java.util.List.of("", "/relative", "ftp://example.com", "http://example.com:65536", "http://example.com:0")) {
+            assertThatThrownBy(() -> settings.save(new AiSettingsService.Form("external", url, "secret", "model",
+                    "/v1/chat/completions", 10, null, false)))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("地址");
+        }
+        assertThatThrownBy(() -> settings.save(cpa("secret-不能作为HTTP头")))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageNotContaining("secret-");
+    }
+
+    @Test void concurrentSavesKeepBothIndependentProfiles() throws Exception {
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var first = executor.submit(() -> {
+                start.await();
+                settings.save(cpa("cpa-concurrent-key"));
+                return null;
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                settings.save(new AiSettingsService.Form("external", "https://external.example", "external-key",
+                        "external-model", "/v1/chat/completions", 5, null, false));
+                return null;
+            });
+            start.countDown();
+            first.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            second.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            String view = mapper.writeValueAsString(settings.view());
+            assertThat(view).contains("model-a", "external-model");
+            assertThat(view).doesNotContain("cpa-concurrent-key", "external-key");
+        }
+    }
+
+    @Test void responseBodyStallTimesOutAndLaterRequestsStillWork() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        AtomicInteger calls = new AtomicInteger();
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            server.setExecutor(executor);
+            server.createContext("/", exchange -> {
+                try {
+                    if (calls.incrementAndGet() == 1) {
+                        exchange.sendResponseHeaders(200, 0);
+                        exchange.getResponseBody().write('{');
+                        exchange.getResponseBody().flush();
+                        try { release.await(5, java.util.concurrent.TimeUnit.SECONDS); }
+                        catch (InterruptedException exception) { Thread.currentThread().interrupt(); }
+                    } else {
+                        byte[] body = "{\"choices\":[{\"message\":{\"content\":\"recovered\"}}]}".getBytes(StandardCharsets.UTF_8);
+                        exchange.sendResponseHeaders(200, body.length);
+                        exchange.getResponseBody().write(body);
+                    }
+                } finally { exchange.close(); }
+            });
+            server.start();
+            try {
+                settings.save(new AiSettingsService.Form("external", "http://127.0.0.1:" + server.getAddress().getPort(),
+                        "key", "model", "/v1/chat/completions", 1, null, false));
+                org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(4), () ->
+                        assertThatThrownBy(() -> gateway.complete(settings.connection(), "system", "user"))
+                                .hasMessageContaining("超时"));
+                assertThat(gateway.complete(settings.connection(), "system", "user")).isEqualTo("recovered");
+            } finally { release.countDown(); server.stop(0); }
+        }
+    }
+
+    @Test void oversizedBodyIsRejectedWithoutReturningItsContents() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            byte[] bytes = new byte[2_000_001];
+            exchange.sendResponseHeaders(200, bytes.length);
+            try { exchange.getResponseBody().write(bytes); }
+            finally { exchange.close(); }
+        });
+        server.start();
+        try {
+            settings.save(new AiSettingsService.Form("external", "http://127.0.0.1:" + server.getAddress().getPort(),
+                    "key", "model", "/v1/chat/completions", 5, null, false));
+            assertThatThrownBy(() -> gateway.complete(settings.connection(), "system", "user")).hasMessageContaining("过大");
+        } finally { server.stop(0); }
+    }
 }
