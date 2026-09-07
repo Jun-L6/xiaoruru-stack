@@ -30,9 +30,12 @@
 ./bootstrap.sh start cpa
 ./bootstrap.sh start blog
 ./bootstrap.sh status
+./bootstrap.sh credentials
 ```
 
 `deploy` 是首次部署与后续补齐服务的统一入口：初始化（如需要）、按资源检查 Swap、构建缺失的博客镜像、启动所有已启用功能、安装证书续期任务并执行诊断。命令可重复执行，不会重置已有数据。首次安装 CPA 时仍会进入官方安装器交互界面。
+
+`credentials` 在交互终端只读显示各管理页面的入口、部署初始账号和密钥，不重置凭据，也不会在 `status` 中泄露。
 
 首次部署、DNS、证书、凭据、镜像构建与日常操作见 [部署说明](docs/部署说明.md)。
 

@@ -6,6 +6,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import time
 
@@ -133,7 +134,65 @@ def initialize(store, module=None, source=None):
     print("可重复执行；已有账号、数据库和 VPN 客户端不会重置。")
     if exists and config["domains"] != previous["domains"]:
         print("域名已变化：启动网关取得新证书后，执行 tools sites 对相应站点应用配置。")
-    print("下一步：运行 ./bootstrap.sh deploy 完整部署；也可按需 build/start 单项功能。")
+    print("下一步：运行 ./bootstrap.sh deploy 完整部署；登录信息可用 ./bootstrap.sh credentials 查看。")
+
+
+def deployment_credentials(store):
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        raise StackError("登录信息包含明文密钥，只能在交互终端查看，不能重定向到文件或管道。")
+    config = store.load()
+    path = safe_path(store.system / "secrets.json")
+    try:
+        credentials = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        raise StackError("无法读取 data/system/secrets.json。")
+    wanted = ("gateway_username", "gateway_password", "vpn_username", "vpn_password",
+              "gost_username", "gost_password", "blog_admin")
+    if (not isinstance(credentials, dict)
+            or any(not isinstance(credentials.get(key), str)
+                   or not re.fullmatch(r"[A-Za-z0-9_.@+-]{1,128}", credentials[key]) for key in wanted)):
+        raise StackError("data/system/secrets.json 登录凭据不完整或格式异常。")
+
+    def show(title, rows):
+        print("\n" + title)
+        for label, value in rows:
+            print(f"  {label}：{value}")
+
+    def cpa_secret(name):
+        secret_path = safe_path(store.data / "cpa/secrets" / name)
+        if not secret_path.is_file():
+            return "尚未生成（请先完成 CPA 官方安装器）"
+        value = secret_path.read_text().strip()
+        if not re.fullmatch(r"[A-Za-z0-9_.@+-]{1,4096}", value):
+            raise StackError(f"CPA 密钥文件格式异常：data/cpa/secrets/{name}")
+        return value
+
+    print("\n部署生成的登录信息（请勿截图、转发或保存到公共日志）")
+    print("若你已在管理页面修改过密码，应使用修改后的密码；本命令不会读取 Web 页面中的新密码。")
+    show("Nginx UI", [("入口", f"https://{config['domains']['gateway']}/"),
+                       ("用户名", credentials["gateway_username"]),
+                       ("密码", credentials["gateway_password"])])
+    if "vpn" in config["enabled"]:
+        show("3x-ui", [("入口", f"https://{config['domains']['vpn']}/"),
+                        ("用户名", credentials["vpn_username"]),
+                        ("密码", credentials["vpn_password"]),
+                        ("客户端订阅", "data/vpn/output/access.json")])
+        if config["gost"]:
+            show("GOST HTTPS 正向代理", [("地址", f"{config['domains']['gost']}:9443"),
+                                          ("用户名", credentials["gost_username"]),
+                                          ("密码", credentials["gost_password"])])
+    if "cpa" in config["enabled"]:
+        show("CPA Manager Plus", [("入口", f"https://{config['domains']['cpamp']}/"),
+                                   ("登录方式", "不需要用户名，填写管理员密钥"),
+                                   ("管理员密钥", cpa_secret("cpamp-admin-key"))])
+        show("CLI Proxy API", [("API 根地址", f"https://{config['domains']['cpa_api']}/"),
+                               ("CPA Management Key", cpa_secret("cpa-management-key")),
+                               ("普通 API Key", cpa_secret("cpa-demo-client-key"))])
+    if "blog" in config["enabled"]:
+        show("博客后台", [("入口", f"https://{config['domains']['blog']}/admin"),
+                           ("用户名", "admin"),
+                           ("管理密钥", credentials["blog_admin"])])
+    print("\n以上信息来自统一数据目录，只读显示，没有生成或修改任何凭据。")
 
 
 def tools_menu(runtime, action, yes_flag=False):
@@ -171,6 +230,9 @@ def execute(args, store=None):
     if command == "status" and not store.config_path.exists():
         print("项目尚未初始化；运行 ./bootstrap.sh init。没有启动或修改容器。")
         return
+    if command == "credentials":
+        deployment_credentials(store)
+        return
     if command in ("init", "config"):
         with lock(store, command + " " + (module if module in SERVICES else "all")):
             initialize(store, module, args.config)
@@ -198,6 +260,7 @@ def execute(args, store=None):
             print("\n[5/5] 执行最终诊断")
             runtime.doctor()
             print("\n部署完成。以后可重复执行 ./bootstrap.sh deploy，补齐缺失服务而不重置数据。")
+            print("登录入口、初始账号和密钥：./bootstrap.sh credentials")
         return
     if command == "update" and module == "cpa":
         raise StackError("CPA 由官方安装器管理，请运行 start cpa，在官方菜单中选择升级。")
@@ -255,9 +318,9 @@ def execute(args, store=None):
 
 
 def menu():
-    options = ["首次部署／补齐全部功能", "查看功能状态", "初始化／调整部署配置", "启动功能", "停止功能", "重启功能",
+    options = ["首次部署／补齐全部功能", "查看功能状态", "查看登录信息", "初始化／调整部署配置", "启动功能", "停止功能", "重启功能",
                "查看日志", "构建博客镜像", "更新网关／VPN 镜像", "临时工具"]
-    commands = ["deploy", "status", "init", "start", "stop", "restart", "logs", "build", "update", "tools"]
+    commands = ["deploy", "status", "credentials", "init", "start", "stop", "restart", "logs", "build", "update", "tools"]
     while True:
         selected = choice("小茹茹服务管理 · 全键盘操作", options, back_label="退出")
         if not selected:
@@ -289,7 +352,7 @@ def menu():
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description="小茹茹部署管理；不带参数进入中文交互菜单。")
-    parser.add_argument("command", nargs="?", choices=["deploy", "status", "init", "config", "start", "stop",
+    parser.add_argument("command", nargs="?", choices=["deploy", "status", "credentials", "init", "config", "start", "stop",
                         "restart", "logs", "doctor", "tools", "build", "update"])
     parser.add_argument("module", nargs="?", help="gateway / vpn / cpa / blog / all；tools 可接工具名")
     parser.add_argument("--config", help="init/deploy 读取 JSON 配置文件")

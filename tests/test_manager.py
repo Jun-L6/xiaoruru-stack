@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from manager.__main__ import execute, initialize, lock
+from manager.__main__ import deployment_credentials, execute, initialize, lock
 from manager.runtime import Runtime, clean_env
 from manager.storage import CERT_NAME, ROOT, StackError, Store, validate, write
 
@@ -32,6 +32,31 @@ def fixture():
 
 
 class StorageTest(unittest.TestCase):
+    def test_credentials_show_enabled_logins_without_database_secret(self):
+        with fixture() as (store, _):
+            write(store.data / "cpa/secrets/cpamp-admin-key", "cpamp_test_admin\n")
+            write(store.data / "cpa/secrets/cpa-management-key", "cpa_test_management\n")
+            write(store.data / "cpa/secrets/cpa-demo-client-key", "sk-test-client\n")
+            generated = json.loads((store.system / "secrets.json").read_text())
+            output = io.StringIO()
+            output.isatty = lambda: True
+            with patch("sys.stdin.isatty", return_value=True), patch("sys.stdout", output):
+                deployment_credentials(store)
+            text = output.getvalue()
+            self.assertIn(generated["gateway_password"], text)
+            self.assertIn(generated["vpn_password"], text)
+            self.assertIn(generated["blog_admin"], text)
+            self.assertIn("cpamp_test_admin", text)
+            self.assertIn("cpa_test_management", text)
+            self.assertIn("sk-test-client", text)
+            self.assertNotIn(generated["blog_db"], text)
+            self.assertIn("用户名：admin", text)
+
+    def test_credentials_refuse_noninteractive_output(self):
+        with fixture() as (store, _), patch("sys.stdin.isatty", return_value=False), \
+                self.assertRaisesRegex(StackError, "交互终端"):
+            deployment_credentials(store)
+
     def test_repeat_init_preserves_all_credentials_and_data(self):
         with fixture() as (store, runtime):
             secret = (store.system / "secrets.json").read_bytes()
