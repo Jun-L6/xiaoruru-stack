@@ -14,7 +14,7 @@
 
 ## 开始使用
 
-服务器需要 Linux、Docker Engine、Docker Compose ≥ 2.24.4、Python ≥ 3.9、curl、OpenSSL。
+在官方 Ubuntu 服务器上以 root 运行时，脚本会自动安装缺失的 Python ≥ 3.9、Docker Engine、Docker Compose、curl、OpenSSL，并启动 Docker。其他系统需要提前准备这些依赖。
 
 ```bash
 ./bootstrap.sh

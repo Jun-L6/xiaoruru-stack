@@ -123,6 +123,89 @@ class StorageTest(unittest.TestCase):
 
 
 class LifecycleTest(unittest.TestCase):
+    def test_ready_host_environment_does_not_run_apt(self):
+        with fixture() as (_, runtime):
+            def command(args, **kwargs):
+                if args[:3] == ["docker", "compose", "version"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="2.30.0\n", stderr="")
+                if args[:2] == ["docker", "info"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="29.0.0\n", stderr="")
+                self.fail(f"unexpected command: {args}")
+
+            with patch("manager.runtime.shutil.which", return_value="/usr/bin/tool"), \
+                    patch("manager.runtime.run", side_effect=command) as execute_command:
+                runtime.ensure_host_environment()
+            self.assertFalse(any(call.args[0][0] == "apt-get" for call in execute_command.call_args_list))
+
+    def test_clean_ubuntu_host_installs_official_docker_packages(self):
+        with fixture() as (_, runtime), tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            os_release = root / "os-release"
+            os_release.write_text('ID="ubuntu"\nVERSION_CODENAME=noble\n')
+            installed = False
+
+            def available(name):
+                if name == "docker":
+                    return "/usr/bin/docker" if installed else None
+                return f"/usr/bin/{name}"
+
+            def command(args, **kwargs):
+                nonlocal installed
+                if args[0] == "dpkg-query":
+                    return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+                if args[:2] == ["dpkg", "--print-architecture"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="amd64\n", stderr="")
+                if args[0] == "apt-get" and "docker-ce" in args:
+                    installed = True
+                if args[:3] == ["docker", "compose", "version"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="2.30.0\n", stderr="")
+                if args[:2] == ["docker", "info"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="29.0.0\n", stderr="")
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+            key = root / "keyrings/xiaoruru-docker.asc"
+            source = root / "sources/xiaoruru-docker.sources"
+            docker_key = b"-----BEGIN PGP PUBLIC KEY BLOCK-----\ntest\n"
+            with patch("manager.runtime.sys.platform", "linux"), \
+                    patch("manager.runtime.os.geteuid", return_value=0), \
+                    patch("manager.runtime.shutil.which", side_effect=available), \
+                    patch("manager.runtime.Path.is_dir", return_value=True), \
+                    patch("manager.runtime.run", side_effect=command) as execute_command, \
+                    patch("manager.runtime.urllib.request.urlopen") as download:
+                download.return_value.__enter__.return_value.read.return_value = docker_key
+                runtime.ensure_host_environment(os_release, key, source)
+            self.assertTrue(installed)
+            self.assertEqual(0o644, key.stat().st_mode & 0o777)
+            self.assertEqual(0o755, key.parent.stat().st_mode & 0o777)
+            self.assertIn("download.docker.com/linux/ubuntu", source.read_text())
+            self.assertTrue(any(call.args[0][0] == "apt-get" and "docker-ce" in call.args[0]
+                                for call in execute_command.call_args_list))
+
+    def test_conflicting_docker_packages_are_not_removed(self):
+        with fixture() as (_, runtime), tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            os_release = root / "os-release"
+            os_release.write_text("ID=ubuntu\nVERSION_CODENAME=noble\n")
+
+            def available(name):
+                return None if name == "docker" else f"/usr/bin/{name}"
+
+            def command(args, **kwargs):
+                if args[0] == "dpkg-query" and args[-1] == "docker.io":
+                    return subprocess.CompletedProcess(args, 0, stdout="install ok installed", stderr="")
+                if args[0] == "dpkg-query":
+                    return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+                self.fail(f"unexpected modifying command: {args}")
+
+            with patch("manager.runtime.sys.platform", "linux"), \
+                    patch("manager.runtime.os.geteuid", return_value=0), \
+                    patch("manager.runtime.shutil.which", side_effect=available), \
+                    patch("manager.runtime.Path.is_dir", return_value=True), \
+                    patch("manager.runtime.run", side_effect=command) as execute_command, \
+                    self.assertRaisesRegex(StackError, "docker.io"):
+                runtime.ensure_host_environment(os_release, root / "key", root / "source")
+            self.assertFalse(any(call.args[0][0] == "apt-get" for call in execute_command.call_args_list))
+
     def test_swap_policy_matches_enabled_workload(self):
         self.assertEqual(2048, Runtime.recommended_swap_mib(1024, ["blog"]))
         self.assertEqual(1024, Runtime.recommended_swap_mib(3072, ["cpa"]))

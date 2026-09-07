@@ -16,6 +16,7 @@ SERVICES = {"gateway": ["nginx-ui"], "vpn": ["xui", "gost"],
             "blog": ["rurublog"], "cpa": ["cli-proxy-api", "cpa-manager-plus"]}
 SITES = {"gateway": ["10-nginx-ui"], "vpn": ["20-3x-ui"],
          "cpa": ["30-cpa-manager-plus", "40-cli-proxy-api"], "blog": ["50-rurublog"]}
+MINIMUM_COMPOSE = (2, 24, 4)
 
 
 def clean_env():
@@ -71,18 +72,131 @@ class Runtime:
         return run(base + list(args), cwd=cwd, **kwargs)
 
     def preflight(self, prepare=True):
+        if prepare:
+            self.ensure_host_environment()
         for executable in ("docker", "openssl", "bash", "curl"):
             if not shutil.which(executable):
                 raise StackError(f"请安装 {executable}。")
         version = run(["docker", "compose", "version", "--short"], capture=True).stdout
         digits = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
-        if not digits or tuple(map(int, digits.groups())) < (2, 24, 4):
+        if not digits or tuple(map(int, digits.groups())) < MINIMUM_COMPOSE:
             raise StackError("需要 Docker Compose 2.24.4 或更高版本，以支持 CPA 的 !reset 覆盖。")
         run(["docker", "info", "--format", "{{.ServerVersion}}"], capture=True)
         if prepare:
             self.ensure_swap()
             self.store.prepare(self.config)
         self.compose("config", "--quiet", capture=True)
+
+    @staticmethod
+    def compose_supported():
+        if not shutil.which("docker"):
+            return False
+        result = run(["docker", "compose", "version", "--short"], capture=True,
+                     check=False, timeout=30)
+        digits = re.search(r"(\d+)\.(\d+)\.(\d+)", result.stdout if result.returncode == 0 else "")
+        return bool(digits and tuple(map(int, digits.groups())) >= MINIMUM_COMPOSE)
+
+    @staticmethod
+    def operating_system(path):
+        try:
+            values = {}
+            for line in Path(path).read_text().splitlines():
+                if "=" in line and not line.lstrip().startswith("#"):
+                    key, value = line.split("=", 1)
+                    values[key] = value.strip().strip('"\'')
+            return values
+        except OSError:
+            return {}
+
+    def ensure_host_environment(self, os_release=Path("/etc/os-release"),
+                                key=Path("/etc/apt/keyrings/xiaoruru-docker.asc"),
+                                source=Path("/etc/apt/sources.list.d/xiaoruru-docker.sources")):
+        """Prepare production prerequisites on a clean, supported Ubuntu host."""
+        base_missing = [name for name in ("bash", "curl", "openssl") if not shutil.which(name)]
+        docker_packages_needed = not shutil.which("docker") or not self.compose_supported()
+        daemon_ready = (not docker_packages_needed and run(
+            ["docker", "info", "--format", "{{.ServerVersion}}"], capture=True,
+            check=False, timeout=30).returncode == 0)
+        if not base_missing and not docker_packages_needed and daemon_ready:
+            print("环境检查：Docker Engine、Compose、curl 与 OpenSSL 已就绪。")
+            return
+        if sys.platform != "linux":
+            return
+        release = self.operating_system(os_release)
+        codename = release.get("UBUNTU_CODENAME") or release.get("VERSION_CODENAME", "")
+        if release.get("ID") != "ubuntu" or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", codename):
+            raise StackError("自动准备宿主机目前只支持官方 Ubuntu；此系统请按 Docker 官方文档安装环境。")
+        if os.geteuid() != 0:
+            raise StackError("自动安装 Docker 和系统依赖需要以 root 运行。")
+        if not shutil.which("apt-get") or not shutil.which("dpkg") or not shutil.which("dpkg-query"):
+            raise StackError("Ubuntu APT/dpkg 工具不完整，无法自动准备宿主机。")
+        if not shutil.which("systemctl") or not Path("/run/systemd/system").is_dir():
+            raise StackError("完整部署需要使用 systemd 的 Ubuntu 服务器。")
+        apt_env = {**clean_env(), "DEBIAN_FRONTEND": "noninteractive", "NEEDRESTART_MODE": "a"}
+        apt = ["apt-get", "-o", "DPkg::Lock::Timeout=120"]
+        if docker_packages_needed:
+            conflicts = []
+            for package in ("docker.io", "docker-compose", "docker-compose-v2", "docker-doc",
+                            "docker-buildx", "podman-docker", "containerd", "runc"):
+                status = run(["dpkg-query", "-W", "-f=${Status}", package],
+                             capture=True, check=False, timeout=30)
+                if status.returncode == 0 and "install ok installed" in status.stdout:
+                    conflicts.append(package)
+            if conflicts:
+                raise StackError("检测到与 Docker 官方软件包冲突的现有组件：" + ", ".join(conflicts)
+                                 + "。为避免影响已有业务，脚本不会自动卸载。")
+        if base_missing or docker_packages_needed:
+            print("环境准备：更新 Ubuntu 软件索引并安装基础依赖...")
+            run(apt + ["update"], env=apt_env, timeout=1800)
+            run(apt + ["install", "-y", "ca-certificates", "curl", "openssl"],
+                env=apt_env, timeout=1800)
+        if docker_packages_needed:
+            architecture = run(["dpkg", "--print-architecture"], capture=True).stdout.strip()
+            if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", architecture):
+                raise StackError("无法识别用于 Docker 仓库的服务器架构。")
+            key = safe_path(key)
+            source = safe_path(source)
+            directory(source.parent, 0o755)
+            existing_repository = False
+            for pattern in ("*.list", "*.sources"):
+                for candidate in source.parent.glob(pattern):
+                    try:
+                        if "https://download.docker.com/linux/ubuntu" in candidate.read_text():
+                            existing_repository = True
+                    except OSError:
+                        continue
+            if not existing_repository:
+                try:
+                    with urllib.request.urlopen("https://download.docker.com/linux/ubuntu/gpg", timeout=45) as response:
+                        docker_key = response.read(200_001)
+                except Exception:
+                    raise StackError("下载 Docker 官方 APT 签名密钥失败，请检查服务器网络。")
+                if (len(docker_key) > 200_000
+                        or not docker_key.startswith(b"-----BEGIN PGP PUBLIC KEY BLOCK-----")):
+                    raise StackError("Docker 官方 APT 签名密钥内容异常，未继续安装。")
+                if source.exists() and "Managed by Xiaoruru" not in source.read_text():
+                    raise StackError(f"{source} 不是本项目创建的仓库配置，未覆盖。")
+                directory(key.parent, 0o755)
+                os.chmod(key.parent, 0o755)
+                write(key, docker_key.decode("ascii"), 0o644)
+                repository = ("# Managed by Xiaoruru host preparation\n"
+                              "Types: deb\n"
+                              "URIs: https://download.docker.com/linux/ubuntu\n"
+                              f"Suites: {codename}\n"
+                              "Components: stable\n"
+                              f"Architectures: {architecture}\n"
+                              f"Signed-By: {key}\n")
+                write(source, repository, 0o644)
+            print("环境准备：通过 Docker 官方 APT 仓库安装 Engine 与 Compose...")
+            run(apt + ["update"], env=apt_env, timeout=1800)
+            run(apt + ["install", "-y", "docker-ce", "docker-ce-cli", "containerd.io",
+                       "docker-buildx-plugin", "docker-compose-plugin"], env=apt_env, timeout=1800)
+        run(["systemctl", "enable", "--now", "docker"], timeout=180)
+        if (not shutil.which("docker") or not self.compose_supported()
+                or run(["docker", "info", "--format", "{{.ServerVersion}}"], capture=True,
+                       check=False, timeout=30).returncode):
+            raise StackError("宿主机依赖安装完成，但 Docker Engine 或 Compose 校验失败。")
+        print("环境准备：Docker Engine、Compose、curl 与 OpenSSL 已安装并启动。")
 
     @staticmethod
     def recommended_swap_mib(memory_mib, enabled):
