@@ -21,19 +21,9 @@
     </section>
     <div class="section-heading" id="latest"><div><p class="eyebrow">THE LATEST</p><h2>最近的记录 <span class="count-badge" th:text="${page.totalElements}">0</span></h2></div><a class="text-link" th:href="@{/archives}">全部归档 <svg th:replace="~{fragments/icons :: icon('arrow')}"></svg></a></div>
     <section class="article-list" aria-label="文章列表">
-        <article class="article-card" th:each="article : ${page.content}" th:classappend="${'form-' + article.contentForm.name().toLowerCase()}">
-            <div class="article-card-body"><p class="article-meta">
-                <span th:if="${article.pinned}" class="pin">置顶</span>
-                <span class="form-badge" th:text="${article.contentForm.label}">长文</span>
-                <time th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd')}">2026-08-31</time>
-                <a th:href="@{/categories/{slug}(slug=${article.category.slug})}" th:text="${article.category.pathName}">分类</a>
-            </p>
-            <h2><a th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${article.title}">文章标题</a></h2>
-            <p class="article-summary" th:text="${article.summary}">文章摘要</p>
-            <div class="tag-row" th:if="${!article.tags.empty}">
-                <a class="tag" th:each="tag : ${article.tags}" th:href="@{/tags/{slug}(slug=${tag.slug})}" th:text="${tag.name}">Java</a>
-            </div></div><a class="article-arrow" th:href="@{/posts/{slug}(slug=${article.slug})}" th:attr="aria-label='阅读：' + ${article.title}"><svg th:replace="~{fragments/icons :: icon('external')}"></svg></a>
-        </article>
+        <th:block th:each="article : ${page.content}">
+            <article th:replace="~{fragments/site :: articleCard(${article}, true)}"></article>
+        </th:block>
         <div class="empty-state" th:if="${page.empty}">
             <span class="empty-icon"><svg th:replace="~{fragments/icons :: icon('book')}"></svg></span><h3>第一页，还在等一句开场。</h3><p>日常、技术、思考或喜欢的文字，都可以从这里开始。</p><a class="text-link" th:href="@{/categories}">看看内容分类 →</a>
         </div>

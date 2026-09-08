@@ -6,9 +6,17 @@
 <main class="admin-shell">
     <div th:replace="~{fragments/admin :: flash}"></div>
     <div class="admin-title"><div><p class="eyebrow">MEDIA</p><h1>资源</h1><p>图片可直接展示，其他文件作为附件下载。</p></div></div>
-    <form th:action="@{/admin/media}" method="post" enctype="multipart/form-data" class="panel upload-form">
-        <label>选择文件<input type="file" name="file" required accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,text/markdown,application/zip"></label>
-        <button class="primary" type="submit">上传资源</button>
+    <form th:action="@{/admin/media}" method="post" enctype="multipart/form-data" class="panel upload-form media-upload-form">
+        <div class="file-picker media-file-picker" data-file-picker>
+            <input id="media-file" class="file-picker-input" type="file" name="file" required accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,text/markdown,application/zip">
+            <label class="file-picker-surface" for="media-file">
+                <span class="file-picker-icon"><svg th:replace="~{fragments/icons :: icon('image')}"></svg></span>
+                <span class="file-picker-copy"><strong>选择或拖放资源</strong><small data-file-name data-empty-label="图片、PDF、文本、Markdown 或 ZIP">图片、PDF、文本、Markdown 或 ZIP</small></span>
+                <span class="file-picker-action">浏览文件</span>
+            </label>
+            <small class="file-picker-status">文件会保存在本地资源目录，可随整站一起备份。</small>
+        </div>
+        <button class="primary media-upload-submit" type="submit">上传资源</button>
     </form>
     <div class="media-grid">
         <article class="media-card" th:each="asset : ${media}">
@@ -23,5 +31,6 @@
         </article>
     </div>
 </main>
+<script th:src="@{/js/file-picker.js}"></script>
 </body>
 </html>

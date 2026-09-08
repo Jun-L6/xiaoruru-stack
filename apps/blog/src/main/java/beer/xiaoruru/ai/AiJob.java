@@ -12,12 +12,15 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
 
+/** 可恢复的 AI 分类队列项；任务始终绑定创建时的正文哈希。 */
 @Entity
 @Table(name = "ai_jobs")
 public class AiJob extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "article_id", nullable = false)
     private Article article;
+
+    /** 预期分类的正文版本；与当前文章不同时任务作废。 */
     @Column(name = "content_hash", nullable = false, length = 64)
     private String contentHash;
     @Enumerated(EnumType.STRING)

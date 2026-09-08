@@ -26,6 +26,7 @@
 ./bootstrap.sh deploy
 ./bootstrap.sh init
 ./bootstrap.sh build blog
+./bootstrap.sh reset blog
 ./bootstrap.sh start vpn
 ./bootstrap.sh start cpa
 ./bootstrap.sh start blog
@@ -33,7 +34,9 @@
 ./bootstrap.sh credentials
 ```
 
-`deploy` 是首次部署与后续补齐服务的统一入口：初始化（如需要）、按资源检查 Swap、构建缺失的博客镜像、启动所有已启用功能、安装证书续期任务并执行诊断。命令可重复执行，不会重置已有数据。首次安装 CPA 时仍会进入官方安装器交互界面。
+`deploy` 是首次部署与后续补齐服务的统一入口：初始化（如需要）、按资源检查 Swap、根据源码指纹构建缺失或过期的博客镜像、启动所有已启用功能、安装证书续期任务并执行诊断。命令可重复执行，不会重置已有数据。首次安装 CPA 时仍会进入官方安装器交互界面。
+
+`reset blog` 用于重新初始化博客。交互运行时必须确认两次；它会永久清空文章、上传、备份、日志、AI 设置与博客配置，但不影响网关、VPN 或 CPA。
 
 `credentials` 在交互终端只读显示各管理页面的入口、部署初始账号和密钥，不重置凭据，也不会在 `status` 中泄露。
 

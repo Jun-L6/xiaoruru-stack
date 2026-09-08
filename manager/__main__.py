@@ -247,8 +247,8 @@ def execute(args, store=None):
             print("\n[1/5] 检查运行环境、服务器资源与部署配置")
             runtime.preflight()
             runtime.check_timer_support()
-            if "blog" in runtime.config["enabled"] and not runtime.image_exists(runtime.config["images"]["blog"]):
-                print("\n[2/5] 博客镜像不存在，开始构建")
+            if "blog" in runtime.config["enabled"] and not runtime.blog_image_current():
+                print("\n[2/5] 博客镜像缺失或源码已变化，开始构建")
                 runtime.build_blog()
             else:
                 print("\n[2/5] 博客镜像已就绪或未启用，无需构建")
@@ -266,6 +266,8 @@ def execute(args, store=None):
         raise StackError("CPA 由官方安装器管理，请运行 start cpa，在官方菜单中选择升级。")
     if command in ("start", "stop", "restart") and module not in (*SERVICES.keys(), "all"):
         raise StackError("请指定 gateway、vpn、cpa、blog 或 all。")
+    if command == "reset" and module != "blog":
+        raise StackError("reset 目前只支持 blog：./bootstrap.sh reset blog。")
     if command == "build" and module != "blog":
         raise StackError("只有博客需要构建：build blog。CPA 使用官方预构建镜像。")
     if command == "update" and module not in ("gateway", "vpn"):
@@ -279,6 +281,16 @@ def execute(args, store=None):
     if command == "update" and not args.yes and (not sys.stdin.isatty() or not yes("拉取配置中的镜像并应用更新", False)):
         print("已取消。")
         return
+    if command == "reset" and not args.yes:
+        if not sys.stdin.isatty():
+            print("已取消。无人值守重置必须显式使用 reset blog --yes。")
+            return
+        if not yes("将永久删除全部博客文章、上传、备份、AI 设置、日志与博客配置，是否继续", False):
+            print("已取消，博客数据未改动。")
+            return
+        if not yes("最后确认：仅保留博客镜像和部署初始凭据，确定清空博客数据", False):
+            print("已取消，博客数据未改动。")
+            return
     runtime = Runtime(store)
     if command == "status":
         runtime.status()
@@ -307,6 +319,8 @@ def execute(args, store=None):
                 getattr(runtime, command)(module)
         elif command == "build":
             runtime.build_blog()
+        elif command == "reset":
+            runtime.reset_blog()
         elif command == "update":
             services = SERVICES[module][:]
             if module == "vpn" and not runtime.config["gost"]:
@@ -319,8 +333,8 @@ def execute(args, store=None):
 
 def menu():
     options = ["首次部署／补齐全部功能", "查看功能状态", "查看登录信息", "初始化／调整部署配置", "启动功能", "停止功能", "重启功能",
-               "查看日志", "构建博客镜像", "更新网关／VPN 镜像", "临时工具"]
-    commands = ["deploy", "status", "credentials", "init", "start", "stop", "restart", "logs", "build", "update", "tools"]
+               "查看日志", "构建博客镜像", "重置博客数据", "更新网关／VPN 镜像", "临时工具"]
+    commands = ["deploy", "status", "credentials", "init", "start", "stop", "restart", "logs", "build", "reset", "update", "tools"]
     while True:
         selected = choice("小茹茹服务管理 · 全键盘操作", options, back_label="退出")
         if not selected:
@@ -339,7 +353,7 @@ def menu():
             module = modules[item - 1].split("（")[0]
             if command == "update" and module == "cpa":
                 command = "start"
-        elif command == "build":
+        elif command in ("build", "reset"):
             module = "blog"
         try:
             execute(argparse.Namespace(command=command, module=module, config=None, yes=False))
@@ -353,7 +367,7 @@ def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description="小茹茹部署管理；不带参数进入中文交互菜单。")
     parser.add_argument("command", nargs="?", choices=["deploy", "status", "credentials", "init", "config", "start", "stop",
-                        "restart", "logs", "doctor", "tools", "build", "update"])
+                        "restart", "logs", "doctor", "tools", "build", "reset", "update"])
     parser.add_argument("module", nargs="?", help="gateway / vpn / cpa / blog / all；tools 可接工具名")
     parser.add_argument("--config", help="init/deploy 读取 JSON 配置文件")
     parser.add_argument("--yes", action="store_true", help="确认本地管理器的停止／更新提示；不替 CPA 安装器确认")

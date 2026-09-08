@@ -31,6 +31,12 @@ import org.springframework.web.util.HtmlUtils;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
+/**
+ * 博客公开端入口，包括列表、详情、分类、标签、搜索、RSS 和 Sitemap。
+ *
+ * <p>所有文章查询都以 {@link ArticleStatus#PUBLISHED} 为公开边界；
+ * 正文使用保存时生成的安全 HTML 快照，RSS 和 Sitemap 输出再独立进行 XML/HTML 转义。
+ */
 @Controller
 public class SiteController {
     private static final int PAGE_SIZE = 10;

@@ -17,6 +17,34 @@ SERVICES = {"gateway": ["nginx-ui"], "vpn": ["xui", "gost"],
 SITES = {"gateway": ["10-nginx-ui"], "vpn": ["20-3x-ui"],
          "cpa": ["30-cpa-manager-plus", "40-cli-proxy-api"], "blog": ["50-rurublog"]}
 MINIMUM_COMPOSE = (2, 24, 4)
+BLOG_SOURCE_LABEL = "beer.xiaoruru.blog.source-hash"
+# Identifies the database layout accepted by the current blog image.
+BLOG_SCHEMA_GENERATION = "schema-v1"
+
+
+def blog_source_hash(root):
+    """Hash every file that can change the blog image, without depending on Git metadata."""
+    root = safe_path(Path(root) / "apps/blog")
+    selected = []
+    for relative in ("Dockerfile", ".dockerignore", "pom.xml"):
+        selected.append(safe_path(root / relative))
+    for folder in ("container", "src"):
+        base = safe_path(root / folder)
+        if not base.is_dir():
+            raise StackError(f"博客源码目录缺失：{base}")
+        selected.extend(sorted(path for path in base.rglob("*") if path.is_file()))
+    digest = hashlib.sha256()
+    for path in sorted(selected, key=lambda item: item.relative_to(root).as_posix()):
+        path = safe_path(path)
+        if not path.is_file():
+            raise StackError(f"博客构建文件缺失：{path}")
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(4, "big"))
+        digest.update(relative)
+        with path.open("rb") as source:
+            while chunk := source.read(1024 * 1024):
+                digest.update(chunk)
+    return digest.hexdigest()
 
 
 def clean_env():
@@ -334,6 +362,24 @@ class Runtime:
 
     def image_exists(self, image):
         return run(["docker", "image", "inspect", image], capture=True, check=False).returncode == 0
+
+    def blog_image_current(self):
+        image = self.config["images"]["blog"]
+        if not self.image_exists(image):
+            return False
+        template = '{{ index .Config.Labels "' + BLOG_SOURCE_LABEL + '" }}'
+        result = run(["docker", "image", "inspect", "--format", template, image],
+                     capture=True, check=False, timeout=30)
+        return result.returncode == 0 and result.stdout.strip() == blog_source_hash(self.root)
+
+    def ensure_blog_schema_compatible(self):
+        database = safe_path(self.store.data / "blog/runtime/database")
+        if not database.exists() or not any(database.iterdir()):
+            return
+        if self.store.state().get("blog_schema_generation") != BLOG_SCHEMA_GENERATION:
+            raise StackError(
+                "博客数据库结构与当前应用不匹配。"
+                "如果不需要保留数据，请执行 ./bootstrap.sh reset blog 重新初始化。")
 
     def verify_deployment(self):
         rows = self.containers()
@@ -655,6 +701,12 @@ class Runtime:
             raise StackError(f"{module} 未启用，请先执行 init {module}。")
         if module == "vpn":
             self.require_vpn_data()
+        if module == "blog":
+            if not self.image_exists(self.config["images"]["blog"]):
+                raise StackError("博客镜像未准备好。请先执行 ./bootstrap.sh build blog，或 docker load 导入镜像。")
+            if not self.blog_image_current():
+                raise StackError("博客镜像不是由当前源码构建的，请先执行 ./bootstrap.sh build blog。")
+            self.ensure_blog_schema_compatible()
         self.gateway()
         if module == "gateway":
             self.links(module)
@@ -681,10 +733,8 @@ class Runtime:
                 self.compose("stop", "gost")
             print("VPN 客户端与订阅信息：data/vpn/output/access.json（私密文件）")
         elif module == "blog":
-            image = self.config["images"]["blog"]
-            if not self.image_exists(image):
-                raise StackError("博客镜像未准备好。请先执行 ./bootstrap.sh build blog，或 docker load 导入镜像。")
             self.up(["rurublog"])
+            self.store.mark("blog_schema_generation", BLOG_SCHEMA_GENERATION)
         elif module == "cpa":
             self.cpa_override()
             if not self.cpa_ready():
@@ -752,6 +802,10 @@ class Runtime:
             raise StackError(f"{module} 未启用。")
         if module == "vpn":
             self.require_vpn_data()
+        if module == "blog":
+            if not self.blog_image_current():
+                raise StackError("博客镜像不是由当前源码构建的，请先执行 ./bootstrap.sh build blog。")
+            self.ensure_blog_schema_compatible()
         if module == "vpn" and not self.store.state().get("vpn_ready"):
             self.start("vpn")
             return
@@ -774,9 +828,46 @@ class Runtime:
         self.compose("restart", *services, cpa=module == "cpa")
         self.up(services, cpa=module == "cpa")
         self.sites(module)
+        if module == "blog":
+            self.store.mark("blog_schema_generation", BLOG_SCHEMA_GENERATION)
 
     def build_blog(self):
-        self.compose("build", "rurublog", timeout=3600)
+        source_hash = blog_source_hash(self.root)
+        try:
+            values = {match.group(1): int(match.group(2)) for line in Path("/proc/meminfo").read_text().splitlines()
+                      if (match := re.fullmatch(r"(MemTotal|MemAvailable):\s+(\d+)\s+kB", line))}
+            if values.get("MemTotal", 4 * 1024 * 1024) < 3 * 1024 * 1024:
+                available = values.get("MemAvailable", 0) // 1024
+                print(f"低内存构建模式：当前可用约 {available} MiB；复用 Maven 缓存、限制构建堆并跳过重复测试。")
+        except OSError:
+            pass
+        print(f"博客源码指纹：{source_hash[:12]}；开始构建生产镜像（显示完整阶段）。")
+        self.compose("--progress", "plain", "build", "--build-arg", f"BLOG_SOURCE_HASH={source_hash}",
+                     "--build-arg", "BLOG_BUILD_TESTS=false", "rurublog", timeout=3600,
+                     env={**clean_env(), "BLOG_SOURCE_HASH": source_hash, "BLOG_BUILD_TESTS": "false"})
+        if not self.blog_image_current():
+            raise StackError("博客镜像构建完成，但源码指纹校验失败。")
+        print("博客镜像构建完成并通过源码指纹校验。")
+
+    def reset_blog(self):
+        """Delete only the two managed blog data directories, then recreate fresh configuration."""
+        self.compose("stop", "rurublog", capture=True, timeout=180)
+        if self.running("gateway"):
+            self.sites("blog", enabled=False)
+        blog_root = safe_path(self.store.data / "blog")
+        directory(blog_root)
+        targets = [safe_path(blog_root / name) for name in ("config", "runtime")]
+        for target in targets:
+            if target.parent != blog_root or os.path.ismount(target):
+                raise StackError(f"博客清理目标异常，拒绝删除：{target}")
+            if target.exists() and not target.is_dir():
+                raise StackError(f"博客清理目标不是目录，拒绝删除：{target}")
+        for target in targets:
+            if target.exists():
+                shutil.rmtree(target)
+        self.store.mark("blog_schema_generation", None)
+        self.store.prepare(self.config)
+        print("博客数据已重置：文章、上传、备份、日志、AI 设置和博客配置均已清空；其他功能数据未改动。")
 
     def logs(self, module):
         if module == "cpa" and not self.cpa_installed():

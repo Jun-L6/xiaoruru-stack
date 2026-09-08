@@ -8,12 +8,13 @@
     <div class="admin-title"><div><p class="eyebrow">AI SETTINGS</p><h1>AI 设置</h1></div></div>
     <p>选择模型接入方式。保存不会测试连接；实际使用失败时，在 AI 任务中查看错误。</p>
     <form th:action="@{/admin/ai-settings}" method="post" class="panel stack-form" id="ai-form">
-        <label for="ai-mode">接入方式</label>
-        <select id="ai-mode" name="mode">
-            <option value="none" th:selected="${ai.mode == 'none'}">关闭 AI</option>
-            <option value="cpa" th:selected="${ai.mode == 'cpa'}">使用 CPA（Docker 内网）</option>
-            <option value="external" th:selected="${ai.mode == 'external'}">外部 OpenAI-compatible 模型</option>
-        </select>
+        <label for="ai-mode">接入方式
+            <select id="ai-mode" name="mode">
+                <option value="none" th:selected="${ai.mode == 'none'}">关闭 AI</option>
+                <option value="cpa" th:selected="${ai.mode == 'cpa'}">使用 CPA（Docker 内网）</option>
+                <option value="external" th:selected="${ai.mode == 'external'}">外部 OpenAI-compatible 模型</option>
+            </select>
+        </label>
         <fieldset id="ai-fields" class="stack-form ai-settings-fields">
             <legend>模型接口</legend>
             <label>接口根地址<input id="ai-base" name="baseUrl" type="url" maxlength="1000"></label>

@@ -12,6 +12,7 @@ import beer.xiaoruru.article.ArticleService;
 import beer.xiaoruru.article.ClassificationStatus;
 import beer.xiaoruru.article.ContentType;
 import beer.xiaoruru.article.ContentForm;
+import beer.xiaoruru.article.SummaryOrigin;
 import beer.xiaoruru.taxonomy.CategoryRepository;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +55,8 @@ class AiClassificationIntegrationTest {
         assertThat(applied.getClassificationStatus()).isEqualTo(ClassificationStatus.APPLIED);
         assertThat(applied.getCategory().getSlug()).isEqualTo(categorySlug);
         assertThat(applied.getContentForm()).isEqualTo(ContentForm.LONGFORM);
+        assertThat(applied.isContentFormAutomatic()).isTrue();
+        assertThat(applied.getSummaryOrigin()).isEqualTo(SummaryOrigin.AI);
         assertThat(applied.getTags()).extracting(tag -> tag.getName()).containsExactlyInAnyOrder("Java", "JVM");
 
         Article middle = article("ai-middle-confidence", false);
@@ -115,7 +118,7 @@ class AiClassificationIntegrationTest {
         AiJob job = service.enqueue(article.getId(), article.getContentHash(), java.time.Duration.ZERO);
         articleService.save(new ArticleCommand(article.getId(), article.getTitle(), article.getSlug(),
                 article.getSummary(), article.getContentType(), article.getContentForm(), article.getContent(), article.getCategory().getId(),
-                "Manual", false, true, "", ""));
+                "Manual", "", "", false, true, "", ""));
         when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(
                 "software-development", ContentForm.LONGFORM, 0.99,
                 List.of("Java", "JVM"), "would overwrite", null, null, null));
@@ -178,9 +181,9 @@ class AiClassificationIntegrationTest {
     @Test
     void appliesShortPoeticExpressionWithoutForcingTagsOrTechnicalCategories() {
         Article article = articleService.save(new ArticleCommand(null, "晚风", "ai-short-poem", "",
-                ContentType.TEXT, ContentForm.LONGFORM, "晚风把月光吹进了杯里。",
+                ContentType.TEXT, null, "晚风把月光吹进了杯里。",
                 categories.findBySlug("uncategorized").orElseThrow().getId(), "",
-                false, false, "", ""));
+                "", "", false, false, "", ""));
         when(classifier.classify(any(), any())).thenReturn(new ClassificationResult(
                 "snippets-poetry", ContentForm.MOMENT, 0.86, List.of(),
                 "这是无外部出处的原创式诗性短句", "晚风与月光的一瞬。", null, null));
@@ -198,7 +201,7 @@ class AiClassificationIntegrationTest {
     private Article article(String slug, boolean locked) {
         Long uncategorized = categories.findBySlug("uncategorized").orElseThrow().getId();
         return articleService.save(new ArticleCommand(null, "AI 测试 " + slug, slug, "",
-                ContentType.MARKDOWN, ContentForm.LONGFORM, "# Java\n\nJVM 与 Spring 技术文章", uncategorized, "",
-                false, locked, "", ""));
+                ContentType.MARKDOWN, null, "# Java\n\nJVM 与 Spring 技术文章", uncategorized, "",
+                "", "", false, locked, "", ""));
     }
 }

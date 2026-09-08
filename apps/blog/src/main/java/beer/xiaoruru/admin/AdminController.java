@@ -157,7 +157,7 @@ public class AdminController {
     public String newArticle(Model model) {
         Long uncategorized = categories.findBySlug("uncategorized").orElseThrow().getId();
         model.addAttribute("articleForm", new ArticleCommand(null, "", "", "", ContentType.MARKDOWN,
-                ContentForm.LONGFORM, "# 新文章\n\n从这里开始写作。", uncategorized, "", false, false, "", ""));
+                null, "", uncategorized, "", "", "", false, false, "", ""));
         addEditorModel(model, null);
         return "admin/article-edit";
     }

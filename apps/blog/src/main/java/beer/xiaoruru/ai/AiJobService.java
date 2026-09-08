@@ -7,6 +7,7 @@ import beer.xiaoruru.article.ArticleSavedEvent;
 import beer.xiaoruru.article.ArticleStatus;
 import beer.xiaoruru.article.ClassificationSource;
 import beer.xiaoruru.article.ClassificationStatus;
+import beer.xiaoruru.article.SummaryOrigin;
 import beer.xiaoruru.config.BlogProperties;
 import beer.xiaoruru.render.ContentRenderer;
 import beer.xiaoruru.taxonomy.Category;
@@ -33,6 +34,13 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
 
+/**
+ * AI 分类任务的持久化队列与状态机。
+ *
+ * <p>文章事务提交后进入队列，调度器先在短事务中领取任务，
+ * 再在事务外调用模型，最后使用新事务应用或记录结果。
+ * 每个阶段都会比对正文哈希和人工锁定，防止过期结果覆盖新内容。
+ */
 @Service
 public class AiJobService {
     private static final Logger log = LoggerFactory.getLogger(AiJobService.class);
@@ -112,6 +120,7 @@ public class AiJobService {
         }
         Article article = articles.findById(articleId).orElseThrow(() -> new IllegalArgumentException("文章不存在"));
         article.setClassificationLocked(false);
+        article.setContentFormAutomatic(true);
         article.setClassificationStatus(ClassificationStatus.PENDING);
         return enqueue(articleId, article.getContentHash(), java.time.Duration.ZERO);
     }
@@ -156,14 +165,17 @@ public class AiJobService {
 
     @Scheduled(fixedDelayString = "${blog.ai.poll-delay:5s}")
     public void processNext() {
+        // 每个任务固定使用领取时的配置快照，不受执行期间后台修改影响。
         var selection = settings.selection();
         if (!selection.enabled()) return;
+        // 领取只修改队列状态，迅速提交后才发起网络请求。
         Work work = transactions.execute(status -> claim(selection));
         if (work == null) return;
         long startedNanos = System.nanoTime();
         try {
             ClassificationResult result = classifyWithTimeout(work.request(), settings.connection(work.selection()));
             long elapsedMs = elapsedMillis(startedNanos);
+            // 应用前再次检查正文版本和锁定，这是防止并发覆盖的最后一道边界。
             transactions.executeWithoutResult(status -> apply(work, result, elapsedMs));
         } catch (RuntimeException exception) {
             long elapsedMs = elapsedMillis(startedNanos);
@@ -205,6 +217,7 @@ public class AiJobService {
         job.setStartedAt(Instant.now());
         job.setAttemptCount(job.getAttemptCount() + 1);
         String plain = renderer.toPlainText(article.getContent());
+        // 控制单次请求的上下文上限，完整正文仍保留在本地数据库。
         if (plain.length() > 14_000) plain = plain.substring(0, 14_000);
         return new Work(job.getId(), new ArticleClassificationRequest(article.getId(), article.getTitle(),
                 article.getSummary(), plain, job.getContentHash()), selection);
@@ -257,13 +270,16 @@ public class AiJobService {
         }
         article.setCategory(category);
         article.setContentForm(result.contentForm());
+        article.setContentFormAutomatic(true);
         article.setClassificationSource(ClassificationSource.AI);
         article.setClassificationConfidence(confidence);
         article.setClassificationReason(clip(result.reason(), 1000));
         article.setClassifiedContentHash(work.request().contentHash());
         article.setClassifiedAt(Instant.now());
-        if ((article.getSummary() == null || article.getSummary().isBlank()) && result.summary() != null) {
+        if (article.getSummaryOrigin() != SummaryOrigin.MANUAL
+                && result.summary() != null && !result.summary().isBlank()) {
             article.setSummary(clip(result.summary(), 240));
+            article.setSummaryOrigin(SummaryOrigin.AI);
         }
         if ((article.getSeoDescription() == null || article.getSeoDescription().isBlank())
                 && result.seoDescription() != null) {
@@ -332,6 +348,7 @@ public class AiJobService {
     }
 
     private boolean obsolete(Article article, String hash) {
+        // 正文变化、人工接管或进入回收站，任一条件都使模型结果失效。
         return !article.getContentHash().equals(hash) || article.isClassificationLocked()
                 || article.getStatus() == ArticleStatus.TRASHED;
     }

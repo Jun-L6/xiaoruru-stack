@@ -12,6 +12,12 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 分类树和标签的业务约束边界。
+ *
+ * <p>文章只能关联启用的叶子分类，分类树最多两级。
+ * 标签经 NFKC 和小写化后去重，但保留首次创建时的展示名称。
+ */
 @Service
 public class TaxonomyService {
     private final CategoryRepository categories;
@@ -39,6 +45,7 @@ public class TaxonomyService {
         if (commaSeparated == null || commaSeparated.isBlank()) {
             return new LinkedHashSet<>();
         }
+        // 手动输入和 AI 结果共用同一套去重规则，单篇最多保留 5 个。
         return Arrays.stream(commaSeparated.split("[,，]"))
                 .map(String::trim)
                 .filter(value -> !value.isBlank())

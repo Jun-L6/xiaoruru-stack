@@ -15,11 +15,9 @@
         </form>
     </header>
     <section class="article-list">
-        <article class="article-card" th:each="article : ${page.content}" th:classappend="${'form-' + article.contentForm.name().toLowerCase()}">
-            <p class="article-meta"><span class="form-badge" th:text="${article.contentForm.label}">长文</span><time th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd')}">日期</time></p>
-            <h2><a th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${article.title}">标题</a></h2>
-            <p class="article-summary" th:text="${article.summary}">摘要</p>
-        </article>
+        <th:block th:each="article : ${page.content}">
+            <article th:replace="~{fragments/site :: articleCard(${article}, false)}"></article>
+        </th:block>
         <div class="empty-state" th:if="${page.empty}"><span class="empty-icon"><svg th:replace="~{fragments/icons :: icon('search')}"></svg></span><h3 th:text="${pageTitle == '搜索' && (query == null || query.isBlank()) ? '从一个关键词开始。' : '暂时没有找到相关文章。'}">没有找到相关文章。</h3><p>试试其他关键词，或浏览全部文章。</p><a class="text-link" th:href="@{/}">返回文章列表 →</a></div>
     </section>
     <nav class="pagination" th:if="${page.totalPages > 1}">

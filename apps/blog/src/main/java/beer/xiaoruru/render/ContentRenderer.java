@@ -17,8 +17,15 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
 
+/**
+ * 正文渲染与安全过滤边界。
+ *
+ * <p>Markdown 和 HTML 最终都必须经过同一份白名单；TEXT 始终作为纯文本转义。
+ * 数据库中的 {@code rendered_html} 只存放此类产生的安全快照。
+ */
 @Service
 public class ContentRenderer {
+    /** 渲染规则变更时递增，便于识别需要重新渲染的文章。 */
     public static final int RENDER_VERSION = 1;
     private static final Pattern SAFE_CLASS = Pattern.compile("[a-zA-Z0-9_ -]{1,160}");
     private static final Pattern SAFE_ID = Pattern.compile("[a-zA-Z0-9_:-]{1,160}");
@@ -75,6 +82,7 @@ public class ContentRenderer {
         return sanitizer.sanitize(html == null ? "" : html);
     }
 
+    /** 为搜索、自动标题、摘要和 AI 输入生成紧凑纯文本，不用于前台渲染。 */
     public String toPlainText(String source) {
         if (source == null || source.isBlank()) {
             return "";

@@ -17,11 +17,14 @@
         <div class="form-errors" th:if="${#fields.hasAnyErrors()}"><p th:each="error : ${#fields.allErrors()}" th:text="${error}">错误</p></div>
         <div class="editor-grid">
             <section class="editor-main">
-                <label for="title">标题</label>
-                <input id="title" class="title-input" th:field="*{title}" maxlength="200" required placeholder="文章标题">
+                <div class="title-field">
+                    <label for="title" data-title-label>标题（可选）</label>
+                    <input id="title" class="title-input" th:field="*{title}" maxlength="200" data-title-input placeholder="AI 自动判断时可留空">
+                    <small data-title-hint>留空后会从正文生成内部标题；若 AI 判断为动态或摘录，前台不会显示该标题。</small>
+                </div>
                 <div class="inline-fields">
                     <label>正文格式<select th:field="*{contentType}" data-content-type><option th:each="type : ${contentTypes}" th:value="${type}" th:text="${type}"></option></select></label>
-                    <label>内容形态<select th:field="*{contentForm}"><option th:each="form : ${contentForms}" th:value="${form}" th:text="${form.label}"></option></select><small>AI 会随分类一起判断；人工修改会锁定结果</small></label>
+                    <label>内容形态<select th:field="*{contentForm}" data-content-form th:attr="data-resolved-form=${article == null ? 'LONGFORM' : article.contentForm.name()}"><option value="">AI 自动判断</option><option th:each="form : ${contentForms}" th:value="${form}" th:text="${form.label}"></option></select><small data-content-form-hint>AI 会同时判断内容形态、分类和标签</small></label>
                     <label>固定链接<input th:field="*{slug}" maxlength="220" placeholder="留空自动生成"></label>
                 </div>
                 <label for="content">正文</label>
@@ -34,12 +37,25 @@
             <aside class="editor-sidebar">
                 <label>分类<select th:field="*{categoryId}" required><option th:each="category : ${leafCategories}" th:value="${category.id}" th:text="${category.pathName}"></option></select></label>
                 <label>标签<input th:field="*{tags}" maxlength="500" placeholder="咖啡, 周末, Java"><small>使用逗号分隔，0–5 个；不必凑数</small></label>
-                <label>插入图片或附件<input type="file" data-media-upload accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,text/markdown,application/zip"><small data-upload-state>上传后自动插入正文</small></label>
-                <label>摘要<textarea th:field="*{summary}" rows="5" maxlength="1000" placeholder="留空则从正文生成"></textarea></label>
+                <div class="file-picker editor-file-picker" data-file-picker>
+                    <input id="editor-media" class="file-picker-input" type="file" data-media-upload accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,text/markdown,application/zip">
+                    <label class="file-picker-surface" for="editor-media">
+                        <span class="file-picker-icon"><svg th:replace="~{fragments/icons :: icon('image')}"></svg></span>
+                        <span class="file-picker-copy"><strong>添加图片或附件</strong><small data-file-name>点击选择，或把文件拖到这里</small></span>
+                        <span class="file-picker-action">选择文件</span>
+                    </label>
+                    <small class="file-picker-status" data-upload-state>选择后自动上传并插入正文；图片也可直接粘贴</small>
+                </div>
+                <section class="excerpt-fields" data-excerpt-fields th:hidden="${article == null || article.contentForm.name() != 'EXCERPT'}">
+                    <p class="sidebar-section-title">摘录来源</p>
+                    <label>出处<input th:field="*{sourceCitation}" maxlength="300" placeholder="例如：陆游《冬夜读书示子聿》"><small>只填写正文中明确存在的作者、书名或来源</small></label>
+                    <label>来源链接<input th:field="*{sourceUrl}" type="url" maxlength="1000" placeholder="https://"></label>
+                </section>
+                <label>摘要<textarea th:field="*{summary}" rows="5" maxlength="1000" placeholder="留空则自动生成"></textarea><small>自动或 AI 摘要只用于列表与 SEO；只有人工摘要会显示为正文导语</small></label>
                 <label>SEO 标题<input th:field="*{seoTitle}" maxlength="200"></label>
                 <label>SEO 描述<textarea th:field="*{seoDescription}" rows="3" maxlength="500"></textarea></label>
                 <label class="checkbox"><input type="checkbox" th:field="*{pinned}"> 置顶文章</label>
-                <label class="checkbox"><input type="checkbox" th:field="*{classificationLocked}"> 锁定人工分类</label>
+                <label class="checkbox"><input type="checkbox" th:field="*{classificationLocked}" data-classification-lock> 锁定当前分类结果</label>
                 <div class="ai-result" th:if="${article != null}">
                     <strong>AI 分类</strong>
                     <span class="status" th:text="${article.classificationStatus}">PENDING</span>
@@ -64,6 +80,7 @@
 <script th:src="@{/webjars/katex/0.16.44/dist/contrib/auto-render.min.js}"></script>
 <script th:src="@{/webjars/mermaid/11.17.1/dist/mermaid.min.js}"></script>
 <script th:src="@{/js/article.js}"></script>
+<script th:src="@{/js/file-picker.js}"></script>
 <script th:src="@{/js/editor.js}"></script>
 </body>
 </html>

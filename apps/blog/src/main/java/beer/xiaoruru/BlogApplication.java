@@ -13,6 +13,12 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 
+/**
+ * rurublog 应用入口。
+ *
+ * <p>数据目录在 Spring 容器创建前就会准备，确保 H2 、日志和后续 Bean 初始化时有可写路径。
+ * {@code --generate-admin-hash} 是独立管理命令，不启动 Web 应用。
+ */
 @EnableAsync
 @EnableScheduling
 @SpringBootApplication

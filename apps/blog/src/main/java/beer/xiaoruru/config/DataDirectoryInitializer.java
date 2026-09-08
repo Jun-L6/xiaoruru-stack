@@ -9,6 +9,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+/** 在任何业务 Runner 前准备数据库、上传、备份、日志和临时目录。 */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class DataDirectoryInitializer implements ApplicationRunner {

@@ -17,6 +17,8 @@ import beer.xiaoruru.article.ArticleService;
 import beer.xiaoruru.article.ArticleRepository;
 import beer.xiaoruru.article.ContentType;
 import beer.xiaoruru.article.ContentForm;
+import beer.xiaoruru.article.SummaryOrigin;
+import beer.xiaoruru.article.TitleOrigin;
 import beer.xiaoruru.taxonomy.Category;
 import beer.xiaoruru.taxonomy.CategoryRepository;
 import beer.xiaoruru.taxonomy.TagRepository;
@@ -59,7 +61,7 @@ class BlogIntegrationTest {
         Long categoryId = categories.findBySlug("software-development").orElseThrow().getId();
         Article article = articleService.save(new ArticleCommand(null, "JVM 字节码入门", "jvm-bytecode-test", "",
                 ContentType.MARKDOWN, ContentForm.LONGFORM, "# JVM\n\n```java\nclass Demo {}\n```", categoryId,
-                "Java, JVM", false, true, "", ""));
+                "Java, JVM", "", "", false, true, "", ""));
         articleService.publish(article.getId());
 
         mvc.perform(get("/posts/jvm-bytecode-test"))
@@ -72,7 +74,9 @@ class BlogIntegrationTest {
     void authenticatedAdminCanOpenEditorAndCsrfProtectsWrites() throws Exception {
         mvc.perform(get("/admin/articles/new").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
-                .andExpect(view().name("admin/article-edit"));
+                .andExpect(view().name("admin/article-edit"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("AI 自动判断")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-file-picker")));
         mvc.perform(get("/admin").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(view().name("admin/dashboard"));
         mvc.perform(get("/admin/articles").with(user("admin").roles("ADMIN")))
@@ -81,6 +85,9 @@ class BlogIntegrationTest {
                 .andExpect(status().isOk()).andExpect(view().name("admin/categories"));
         mvc.perform(get("/admin/tags").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(view().name("admin/tags"));
+        mvc.perform(get("/admin/media").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-file-picker")));
 
         mvc.perform(post("/admin/settings").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isForbidden());
@@ -95,7 +102,8 @@ class BlogIntegrationTest {
     void existingArticleEditorLoadsDetailedRelationships() throws Exception {
         Long categoryId = categories.findBySlug("software-development").orElseThrow().getId();
         Article article = articleService.save(new ArticleCommand(null, "编辑关系测试", "editor-relations-test", "",
-                ContentType.MARKDOWN, ContentForm.NOTE, "# 内容", categoryId, "C++, ABI", false, true, "", ""));
+                ContentType.MARKDOWN, ContentForm.NOTE, "# 内容", categoryId, "C++, ABI", "", "",
+                false, true, "", ""));
 
         mvc.perform(get("/admin/articles/" + article.getId()).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
@@ -109,16 +117,96 @@ class BlogIntegrationTest {
         Long categoryId = categories.findBySlug("daily-moments").orElseThrow().getId();
         Article categorized = articleService.save(new ArticleCommand(null, "周末小记", "weekend-note-test", "",
                 ContentType.TEXT, ContentForm.LONGFORM, "今天去公园散步。", categoryId,
-                "", false, false, "", ""));
+                "", "", "", false, false, "", ""));
         Long uncategorizedId = categories.findBySlug("uncategorized").orElseThrow().getId();
         Article shaped = articleService.save(new ArticleCommand(null, "一瞬", "moment-form-test", "",
                 ContentType.TEXT, ContentForm.MOMENT, "风吹过。", uncategorizedId,
-                "", false, false, "", ""));
+                "", "", "", false, false, "", ""));
 
         assertThat(categorized.isClassificationLocked()).isTrue();
         assertThat(categorized.getClassificationSource().name()).isEqualTo("MANUAL");
         assertThat(shaped.isClassificationLocked()).isTrue();
         assertThat(shaped.getClassificationSource().name()).isEqualTo("MANUAL");
+    }
+
+    @Test
+    void automaticContentFormStaysUnlockedAndCanBeRestoredAfterManualChoice() {
+        Long uncategorizedId = categories.findBySlug("uncategorized").orElseThrow().getId();
+        Article automatic = articleService.save(new ArticleCommand(null, "", "auto-form-interaction-test", "",
+                ContentType.TEXT, null, "风从窗口路过。", uncategorizedId,
+                "", "", "", false, false, "", ""));
+
+        assertThat(automatic.isContentFormAutomatic()).isTrue();
+        assertThat(automatic.isClassificationLocked()).isFalse();
+        assertThat(automatic.getTitleOrigin()).isEqualTo(TitleOrigin.GENERATED);
+
+        Article manual = articleService.save(new ArticleCommand(automatic.getId(), "", automatic.getSlug(),
+                automatic.getSummary(), ContentType.TEXT, ContentForm.MOMENT, automatic.getContent(),
+                uncategorizedId, "", "", "", false, false, "", ""));
+        assertThat(manual.isContentFormAutomatic()).isFalse();
+        assertThat(manual.isClassificationLocked()).isTrue();
+
+        Article restored = articleService.save(new ArticleCommand(manual.getId(), "", manual.getSlug(),
+                manual.getSummary(), ContentType.TEXT, null, manual.getContent(), uncategorizedId,
+                "", "", "", false, true, "", ""));
+        assertThat(restored.isContentFormAutomatic()).isTrue();
+        assertThat(restored.isClassificationLocked()).isFalse();
+    }
+
+    @Test
+    void titlelessMomentRendersItsContentOnceWithoutHeadingOrLead() throws Exception {
+        Long uncategorizedId = categories.findBySlug("uncategorized").orElseThrow().getId();
+        String sentence = "纸上得来终觉浅，绝知此事要躬行。";
+        Article moment = articleService.save(new ArticleCommand(null, "", "titleless-moment-test", "",
+                ContentType.TEXT, ContentForm.MOMENT, sentence, uncategorizedId,
+                "实践", "", "", false, false, "", ""));
+        articleService.publish(moment.getId());
+
+        assertThat(moment.getTitleOrigin()).isEqualTo(TitleOrigin.GENERATED);
+        assertThat(moment.getSummaryOrigin()).isEqualTo(SummaryOrigin.GENERATED);
+        assertThat(moment.isTitleDisplayed()).isFalse();
+        String detail = mvc.perform(get("/posts/titleless-moment-test"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String articleMain = detail.substring(detail.indexOf("<main class=\"article-shell"), detail.indexOf("</main>"));
+        assertThat(articleMain).doesNotContain("<h1", "article-lead");
+        assertThat(org.springframework.util.StringUtils.countOccurrencesOf(articleMain, sentence)).isEqualTo(1);
+
+        String home = mvc.perform(get("/")).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(home).contains("form-moment", "moment-card-copy", "titleless-moment-test");
+    }
+
+    @Test
+    void excerptSupportsOptionalTitleAndSourceAttribution() throws Exception {
+        Long uncategorizedId = categories.findBySlug("uncategorized").orElseThrow().getId();
+        Article excerpt = articleService.save(new ArticleCommand(null, "", "excerpt-source-test", "",
+                ContentType.TEXT, ContentForm.EXCERPT, "读书破万卷，下笔如有神。", uncategorizedId,
+                "", "杜甫《奉赠韦左丞丈二十二韵》", "https://example.com/source",
+                false, false, "", ""));
+        articleService.publish(excerpt.getId());
+
+        String detail = mvc.perform(get("/posts/excerpt-source-test"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String articleMain = detail.substring(detail.indexOf("<main class=\"article-shell"), detail.indexOf("</main>"));
+        assertThat(articleMain)
+                .doesNotContain("<h1")
+                .contains("article-detail-source", "杜甫《奉赠韦左丞丈二十二韵》",
+                        "href=\"https://example.com/source\"");
+    }
+
+    @Test
+    void expandedManualFormsRequireTitleAndSourceUrlMustBeHttp() {
+        Long uncategorizedId = categories.findBySlug("uncategorized").orElseThrow().getId();
+        assertThatThrownBy(() -> articleService.save(new ArticleCommand(null, "", "blank-longform-test", "",
+                ContentType.TEXT, ContentForm.LONGFORM, "正文", uncategorizedId,
+                "", "", "", false, false, "", "")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("需要填写标题");
+        assertThatThrownBy(() -> articleService.save(new ArticleCommand(null, "", "bad-source-test", "",
+                ContentType.TEXT, ContentForm.EXCERPT, "摘录", uncategorizedId,
+                "", "", "javascript:alert(1)", false, false, "", "")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("HTTP(S)");
     }
 
     @Test
@@ -142,7 +230,7 @@ class BlogIntegrationTest {
         Long categoryId = categories.findBySlug("software-development").orElseThrow().getId();
         Article article = articleService.save(new ArticleCommand(null, "标签合并测试", "tag-merge-test", "",
                 ContentType.TEXT, ContentForm.NOTE, "标签合并正文", categoryId,
-                "MergeSource, MergeTarget", false, true, "", ""));
+                "MergeSource, MergeTarget", "", "", false, true, "", ""));
         var source = tags.findByNormalizedName("mergesource").orElseThrow();
         var target = tags.findByNormalizedName("mergetarget").orElseThrow();
 

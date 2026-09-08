@@ -18,6 +18,12 @@ import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+/**
+ * 文章聚合根。
+ *
+ * <p>除正文和发布状态外，它还保存内容形态、渲染快照以及 AI 分类状态。
+ * 这些数据共同决定管理端如何编辑、前台如何展示以及 AI 结果是否可以覆盖当前值。
+ */
 @Entity
 @Table(name = "articles", uniqueConstraints = @UniqueConstraint(name = "uk_article_slug", columnNames = "slug"))
 public class Article extends BaseEntity {
@@ -29,11 +35,21 @@ public class Article extends BaseEntity {
     @Column(nullable = false, length = 200)
     private String title;
 
+    /** 用于区分作者标题与仅供后台、搜索使用的内部标题。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "title_origin", nullable = false, length = 20)
+    private TitleOrigin titleOrigin = TitleOrigin.MANUAL;
+
     @Column(nullable = false, length = 220)
     private String slug;
 
     @Column(length = 1000)
     private String summary;
+
+    /** 摘要来源决定后续 AI 是否允许替换该摘要。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "summary_origin", nullable = false, length = 20)
+    private SummaryOrigin summaryOrigin = SummaryOrigin.GENERATED;
 
     @Column(nullable = false, columnDefinition = "CLOB")
     private String content = "";
@@ -46,9 +62,23 @@ public class Article extends BaseEntity {
     @Column(name = "content_form", nullable = false, length = 20)
     private ContentForm contentForm = ContentForm.LONGFORM;
 
+    /** true 表示内容形态仍由 AI 管理；false 表示作者已手动指定。 */
+    @Column(name = "content_form_automatic", nullable = false)
+    private boolean contentFormAutomatic = true;
+
+    /** 摘录的作者、书名或其他人类可读出处。 */
+    @Column(name = "source_citation", length = 300)
+    private String sourceCitation;
+
+    /** 摘录的可选 HTTP(S) 来源地址。 */
+    @Column(name = "source_url", length = 1000)
+    private String sourceUrl;
+
+    /** 原始正文的 SHA-256，用于识别过期 AI 任务和分类结果。 */
     @Column(name = "content_hash", nullable = false, length = 64)
     private String contentHash;
 
+    /** 保存时已完成安全过滤的 HTML，前台不再重复解析正文。 */
     @Column(name = "rendered_html", columnDefinition = "CLOB")
     private String renderedHtml;
 
@@ -98,9 +128,11 @@ public class Article extends BaseEntity {
     @Column(name = "classification_reason", length = 1000)
     private String classificationReason;
 
+    /** 人工分类或人工内容形态会锁定结果，防止延迟到达的 AI 结果覆盖它。 */
     @Column(name = "classification_locked", nullable = false)
     private boolean classificationLocked;
 
+    /** 生成当前分类结果时的正文哈希。 */
     @Column(name = "classified_content_hash", length = 64)
     private String classifiedContentHash;
 
@@ -119,16 +151,29 @@ public class Article extends BaseEntity {
     public void setKind(ArticleKind kind) { this.kind = kind; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
+    public TitleOrigin getTitleOrigin() { return titleOrigin; }
+    public void setTitleOrigin(TitleOrigin titleOrigin) { this.titleOrigin = titleOrigin; }
+    /** 内部生成的动态/摘录标题不在前台正文区显示。 */
+    public boolean isTitleDisplayed() { return titleOrigin == TitleOrigin.MANUAL || !contentForm.isTitleOptional(); }
     public String getSlug() { return slug; }
     public void setSlug(String slug) { this.slug = slug; }
     public String getSummary() { return summary; }
     public void setSummary(String summary) { this.summary = summary; }
+    public SummaryOrigin getSummaryOrigin() { return summaryOrigin; }
+    public void setSummaryOrigin(SummaryOrigin summaryOrigin) { this.summaryOrigin = summaryOrigin; }
+    public boolean isManualSummary() { return summaryOrigin == SummaryOrigin.MANUAL; }
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
     public ContentType getContentType() { return contentType; }
     public void setContentType(ContentType contentType) { this.contentType = contentType; }
     public ContentForm getContentForm() { return contentForm; }
     public void setContentForm(ContentForm contentForm) { this.contentForm = contentForm; }
+    public boolean isContentFormAutomatic() { return contentFormAutomatic; }
+    public void setContentFormAutomatic(boolean contentFormAutomatic) { this.contentFormAutomatic = contentFormAutomatic; }
+    public String getSourceCitation() { return sourceCitation; }
+    public void setSourceCitation(String sourceCitation) { this.sourceCitation = sourceCitation; }
+    public String getSourceUrl() { return sourceUrl; }
+    public void setSourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; }
     public String getContentHash() { return contentHash; }
     public void setContentHash(String contentHash) { this.contentHash = contentHash; }
     public String getRenderedHtml() { return renderedHtml; }

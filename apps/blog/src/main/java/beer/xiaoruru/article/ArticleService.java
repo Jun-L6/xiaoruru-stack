@@ -3,31 +3,36 @@ package beer.xiaoruru.article;
 import beer.xiaoruru.common.Hashing;
 import beer.xiaoruru.render.ContentRenderer;
 import beer.xiaoruru.taxonomy.Category;
-import beer.xiaoruru.taxonomy.CategoryRepository;
 import beer.xiaoruru.taxonomy.TaxonomyService;
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 文章写入用例的统一入口。
+ *
+ * <p>该服务在同一个事务中完成输入规则校验、正文渲染、分类/标签关联和版本快照。
+ * 提交后再通过领域事件触发 AI 任务，避免模型调用读到未提交的文章状态。
+ */
 @Service
 public class ArticleService {
     private final ArticleRepository articles;
     private final ArticleRevisionRepository revisions;
-    private final CategoryRepository categories;
     private final TaxonomyService taxonomy;
     private final ContentRenderer renderer;
     private final ApplicationEventPublisher events;
 
     public ArticleService(ArticleRepository articles, ArticleRevisionRepository revisions,
-            CategoryRepository categories, TaxonomyService taxonomy, ContentRenderer renderer,
+            TaxonomyService taxonomy, ContentRenderer renderer,
             ApplicationEventPublisher events) {
         this.articles = articles;
         this.revisions = revisions;
-        this.categories = categories;
         this.taxonomy = taxonomy;
         this.renderer = renderer;
         this.events = events;
@@ -35,23 +40,45 @@ public class ArticleService {
 
     @Transactional
     public Article save(ArticleCommand command) {
+        boolean isNew = command.id() == null;
         Category category = taxonomy.requireLeaf(command.categoryId());
-        Article article = command.id() == null ? new Article(command.title(), uniqueSlug(command.slug()), category)
+        Article article = isNew ? new Article("未命名内容", uniqueSlug(command.slug()), category)
                 : articles.findById(command.id()).orElseThrow(() -> new IllegalArgumentException("文章不存在"));
 
+        // 先保留会影响 AI 所有权判断的原状态，再应用本次编辑输入。
         String previousHash = article.getContentHash();
         Long previousCategoryId = article.getCategory() == null ? null : article.getCategory().getId();
         ContentForm previousContentForm = article.getContentForm();
-        if (command.id() != null && article.getStatus() == ArticleStatus.PUBLISHED && hasMeaningfulChange(article, command)) {
+        boolean previousContentFormAutomatic = article.isContentFormAutomatic();
+        String previousSummary = article.getSummary();
+        SummaryOrigin previousSummaryOrigin = article.getSummaryOrigin();
+        boolean automaticContentForm = command.contentForm() == null;
+        ContentForm contentForm = automaticContentForm ? article.getContentForm() : command.contentForm();
+        if (contentForm == null) contentForm = ContentForm.LONGFORM;
+
+        // 标题是跨字段规则：动态/摘录可使用内部标题，其他人工形态必须有作者标题。
+        String submittedTitle = blankToNull(command.title());
+        if (!automaticContentForm && !contentForm.isTitleOptional() && submittedTitle == null) {
+            throw new IllegalArgumentException(contentForm.getLabel() + "需要填写标题");
+        }
+        String plainContent = renderer.toPlainText(command.content());
+        String title = submittedTitle == null ? generatedTitle(plainContent) : submittedTitle;
+        if (!isNew && article.getStatus() == ArticleStatus.PUBLISHED
+                && hasMeaningfulChange(article, command, contentForm, automaticContentForm, title)) {
             saveRevision(article, "BEFORE_UPDATE");
         }
-        article.setTitle(command.title().strip());
-        if (command.id() == null || article.getStatus() != ArticleStatus.PUBLISHED) {
+        article.setTitle(title);
+        article.setTitleOrigin(submittedTitle == null ? TitleOrigin.GENERATED : TitleOrigin.MANUAL);
+        if (isNew || article.getStatus() != ArticleStatus.PUBLISHED) {
             article.setSlug(uniqueSlugFor(command.slug(), article.getId(), article.getSlug()));
         }
-        article.setSummary(blankToNull(command.summary()));
+        applySummary(article, blankToNull(command.summary()), previousSummary, previousSummaryOrigin,
+                plainContent, isNew);
         article.setContentType(command.contentType());
-        article.setContentForm(command.contentForm());
+        article.setContentForm(contentForm);
+        article.setContentFormAutomatic(automaticContentForm);
+        article.setSourceCitation(blankToNull(command.sourceCitation()));
+        article.setSourceUrl(normalizeSourceUrl(command.sourceUrl()));
         article.setContent(command.content());
         article.setContentHash(Hashing.sha256(command.content()));
         article.setRenderedHtml(renderer.render(command.contentType(), command.content()));
@@ -63,21 +90,23 @@ public class ArticleService {
         article.setSeoDescription(blankToNull(command.seoDescription()));
         article.setClassificationLocked(Boolean.TRUE.equals(command.classificationLocked()));
 
-        boolean manuallyClassifiedOnCreate = command.id() == null
-                && (!"uncategorized".equals(category.getSlug()) || command.contentForm() != ContentForm.LONGFORM);
-        boolean manuallyReclassified = command.id() != null && previousCategoryId != null
-                && (!previousCategoryId.equals(category.getId()) || previousContentForm != command.contentForm());
-        if (manuallyClassifiedOnCreate || manuallyReclassified) {
+        // 人工选择分类或内容形态即取得所有权；切回自动模式时才将它交还 AI。
+        boolean manualCategory = isNew ? !"uncategorized".equals(category.getSlug())
+                : previousCategoryId != null && !previousCategoryId.equals(category.getId());
+        boolean switchedToAutomatic = !isNew && !previousContentFormAutomatic && automaticContentForm;
+        if (switchedToAutomatic && !manualCategory) {
+            article.setClassificationLocked(false);
+        }
+        if (!automaticContentForm || manualCategory) {
             article.setClassificationSource(ClassificationSource.MANUAL);
             article.setClassificationLocked(true);
             article.setClassificationStatus(ClassificationStatus.APPLIED);
         }
-        if (article.getSummary() == null) {
-            article.setSummary(clip(renderer.toPlainText(command.content()), 240));
-        }
 
         Article saved = articles.save(article);
-        if (!saved.isClassificationLocked() && !saved.getContentHash().equals(previousHash)) {
+        // 只对未锁定且内容确实变化的文章发出任务，去重由 AI 队列完成。
+        if (!saved.isClassificationLocked()
+                && (!saved.getContentHash().equals(previousHash) || switchedToAutomatic)) {
             saved.setClassificationStatus(ClassificationStatus.PENDING);
             events.publishEvent(new ArticleSavedEvent(saved.getId(), saved.getContentHash()));
         }
@@ -143,8 +172,11 @@ public class ArticleService {
     @Transactional(readOnly = true)
     public ArticleCommand toCommand(Article article) {
         String tagNames = article.getTags().stream().map(tag -> tag.getName()).collect(java.util.stream.Collectors.joining(", "));
-        return new ArticleCommand(article.getId(), article.getTitle(), article.getSlug(), article.getSummary(),
-                article.getContentType(), article.getContentForm(), article.getContent(), article.getCategory().getId(), tagNames,
+        String editableTitle = article.getTitleOrigin() == TitleOrigin.GENERATED ? "" : article.getTitle();
+        ContentForm editableForm = article.isContentFormAutomatic() ? null : article.getContentForm();
+        return new ArticleCommand(article.getId(), editableTitle, article.getSlug(), article.getSummary(),
+                article.getContentType(), editableForm, article.getContent(), article.getCategory().getId(), tagNames,
+                article.getSourceCitation(), article.getSourceUrl(),
                 article.isPinned(), article.isClassificationLocked(), article.getSeoTitle(), article.getSeoDescription());
     }
 
@@ -160,11 +192,49 @@ public class ArticleService {
         }
     }
 
-    private boolean hasMeaningfulChange(Article article, ArticleCommand command) {
-        return !java.util.Objects.equals(article.getTitle(), command.title().strip())
-                || !java.util.Objects.equals(article.getContent(), command.content())
+    private boolean hasMeaningfulChange(Article article, ArticleCommand command, ContentForm contentForm,
+            boolean automaticContentForm, String title) {
+        return !Objects.equals(article.getTitle(), title)
+                || !Objects.equals(article.getContent(), command.content())
                 || article.getContentType() != command.contentType()
-                || article.getContentForm() != command.contentForm();
+                || article.getContentForm() != contentForm
+                || article.isContentFormAutomatic() != automaticContentForm;
+    }
+
+    private void applySummary(Article article, String submitted, String previous,
+            SummaryOrigin previousOrigin, String plainContent, boolean isNew) {
+        // 用户未改动自动摘要时重新从正文生成；手写摘要始终保留 MANUAL 所有权。
+        if (submitted == null || (!isNew && previousOrigin == SummaryOrigin.GENERATED
+                && Objects.equals(submitted, previous))) {
+            article.setSummary(clip(plainContent, 240));
+            article.setSummaryOrigin(SummaryOrigin.GENERATED);
+        } else if (!isNew && Objects.equals(submitted, previous)) {
+            article.setSummary(submitted);
+            article.setSummaryOrigin(previousOrigin);
+        } else {
+            article.setSummary(submitted);
+            article.setSummaryOrigin(SummaryOrigin.MANUAL);
+        }
+    }
+
+    private String normalizeSourceUrl(String sourceUrl) {
+        String value = blankToNull(sourceUrl);
+        if (value == null) return null;
+        try {
+            URI uri = URI.create(value);
+            if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                    || uri.getHost() == null || uri.getUserInfo() != null) {
+                throw new IllegalArgumentException("来源链接必须是有效的 HTTP(S) 地址");
+            }
+            return uri.toString();
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("来源链接必须是有效的 HTTP(S) 地址");
+        }
+    }
+
+    private String generatedTitle(String plainContent) {
+        String value = blankToNull(plainContent);
+        return value == null ? "未命名内容" : clip(value, 32);
     }
 
     private String uniqueSlugFor(String requested, Long id, String fallback) {

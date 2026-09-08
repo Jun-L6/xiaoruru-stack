@@ -37,6 +37,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+/**
+ * 单机数据的完整备份服务。
+ *
+ * <p>备份包包含 H2 一致性快照、上传资源、AI 解密密钥、清单和 SHA-256 校验值。
+ * 生成期间先写入 {@code .part} 文件，通过 ZIP 结构校验后再原子替换为可下载文件。
+ */
 @Service
 public class BackupService {
     private static final Logger log = LoggerFactory.getLogger(BackupService.class);
@@ -121,6 +127,7 @@ public class BackupService {
             requireWithin(tempDirectory, tempRoot, "backup temp directory");
 
             Path h2Backup = tempDirectory.resolve("h2-backup.zip");
+            // H2 BACKUP 命令会在应用运行期间生成一致性快照。
             jdbc.execute("BACKUP TO '" + h2Backup.toString().replace("'", "''") + "'");
 
             BackupRecord record = records.findById(recordId).orElseThrow();
@@ -156,6 +163,7 @@ public class BackupService {
                     throw new IOException("备份包校验失败");
                 }
             }
+            // 只有完整且可打开的压缩包才会暴露给下载接口。
             moveAtomically(partial, target);
             long size = Files.size(target);
             String sha = Hashing.sha256(target);

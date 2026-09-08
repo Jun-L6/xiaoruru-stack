@@ -10,6 +10,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
+/** 发布或修改已发布文章前保留的最小正文快照。 */
 @Entity
 @Table(name = "article_revisions")
 public class ArticleRevision extends BaseEntity {

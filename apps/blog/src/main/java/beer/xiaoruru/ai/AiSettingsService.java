@@ -18,6 +18,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * AI 连接配置的唯一读写入口。
+ *
+ * <p>后台保存的配置优先于 YAML；YAML 仅在数据库尚无设置时生效。
+ * API Key 使用数据目录内的 AES-GCM 密钥加密，对页面和日志只暴露“是否已配置”。
+ */
 @Service
 public class AiSettingsService {
     public static final String CPA_URL = "http://cli-proxy-api:8317";
@@ -68,6 +74,7 @@ public class AiSettingsService {
     public String endpoint() { return selection().profile().baseUrl(); }
 
     public Selection selection() {
+        // 一旦后台产生持久化设置，它就是运行时唯一数据源。
         var persisted = repository.findById(1L);
         if (persisted.isPresent()) {
             Document doc = mapper.readValue(persisted.orElseThrow().getDocument(), Document.class);
@@ -101,7 +108,7 @@ public class AiSettingsService {
     }
 
     public synchronized void save(Form form) {
-        // Keep the lock through commit so two browser tabs cannot overwrite each other's profiles.
+        // 锁保持到事务提交，避免两个浏览器页签相互覆盖模式配置。
         transactions.executeWithoutResult(status -> saveWithinTransaction(form));
     }
 
@@ -152,7 +159,7 @@ public class AiSettingsService {
             if (supplied.length() > 4096 || supplied.chars().anyMatch(ch -> ch < 33 || ch > 126)) {
                 throw new IllegalArgumentException("API Key 格式不正确。");
             }
-            // A key is never silently forwarded to a newly selected external origin.
+            // 外部地址变更时必须重新提供密钥，禁止将旧密钥静默发送给新端点。
             String key = form.clearKey() || !base.equals(previous.baseUrl()) ? "" : previous.encryptedKey();
             if (!supplied.isBlank() && !form.clearKey()) key = encrypt(supplied);
             if (key.isBlank()) throw new IllegalArgumentException("启用 AI 时必须填写 API Key；更换地址后请重新填写。");

@@ -80,11 +80,22 @@ button:hover, .button:hover { border-color: var(--accent); background: var(--acc
 .article-meta a { color: var(--accent); }
 .pin { font-size: 10px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 1px 6px; }
 .form-badge { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; background: var(--paper); color: var(--muted); font-size: 9px; font-weight: 650; letter-spacing: .04em; }
-.article-card.form-moment, .article-card.form-excerpt { position: relative; padding-left: 21px; }
-.article-card.form-moment::before, .article-card.form-excerpt::before { content: ""; position: absolute; left: 0; top: 30px; bottom: 30px; width: 3px; border-radius: 3px; background: var(--accent); opacity: .65; }
-.article-card.form-moment h2 { font-size: clamp(17px, 1.8vw, 20px); }
-.article-card.form-excerpt .article-summary { font-family: ui-serif, "Songti SC", "STSong", serif; font-style: italic; }
+.article-card.form-essay h2 { font-family: ui-serif, "Songti SC", "STSong", serif; font-size: clamp(20px, 2.2vw, 24px); font-weight: 600; }
+.article-card.form-note { padding-left: 20px; border-left: 3px solid color-mix(in srgb, var(--accent) 42%, var(--line)); }
 .article-card.form-note .form-badge { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); background: var(--accent-soft); }
+.article-card.form-moment, .article-card.form-excerpt { margin: 16px 0; padding: 23px 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); box-shadow: var(--shadow); }
+.article-card.form-moment { background: linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 58%, var(--paper)), var(--paper) 72%); }
+.article-card.form-moment h2, .article-card.form-excerpt h2 { margin-bottom: 7px; font-size: 16px; }
+.moment-card-copy { display: block; margin: 12px 0 15px; color: var(--text); font-size: clamp(16px, 2vw, 19px); font-weight: 520; line-height: 1.85; white-space: pre-line; }
+.moment-card-copy:hover { color: var(--accent); }
+.excerpt-card-copy { position: relative; margin: 14px 0 10px; padding: 3px 8px 3px 28px; border: 0; color: var(--text); font: 17px/1.9 ui-serif, "Songti SC", "STSong", serif; }
+.excerpt-card-copy::before { content: "“"; position: absolute; top: -10px; left: 0; color: var(--accent); font: 38px/1 ui-serif, Georgia, serif; opacity: .65; }
+.excerpt-card-copy a { color: var(--text); }
+.excerpt-card-copy a:hover { color: var(--accent); }
+.article-source { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 15px; margin: 9px 0 15px; color: var(--muted); font-size: 11px; }
+.article-source cite { font-style: normal; }
+.article-source cite::before { content: "— "; }
+.article-source a { font-size: 10px; }
 .article-summary { color: var(--muted); font-size: 13px; line-height: 1.8; margin: 0 0 13px; max-width: 740px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tag-row, .tag-cloud { display: flex; flex-wrap: wrap; gap: 7px; }
 .tag { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; color: var(--muted); font-size: 10px; background: var(--paper); }
@@ -104,6 +115,7 @@ button:hover, .button:hover { border-color: var(--accent); background: var(--acc
 .article-shell { width: min(940px, calc(100% - 64px)); margin: 48px auto 90px; padding: 48px 64px; background: var(--paper); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); }
 .article-shell > article { max-width: 780px; margin: auto; }
 .article-heading { margin-bottom: 36px; }
+.article-heading.titleless { margin-bottom: 22px; }
 .article-heading h1 { margin: 22px 0; font-size: clamp(28px, 3.5vw, 40px); line-height: 1.42; font-weight: 750; letter-spacing: -1px; overflow-wrap: anywhere; text-wrap: balance; }
 .breadcrumbs { color: var(--muted); font-size: 11px; }
 .breadcrumbs a { color: var(--muted); }
@@ -144,6 +156,15 @@ button:hover, .button:hover { border-color: var(--accent); background: var(--acc
 .mermaid { margin: 28px 0; padding: 22px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); overflow-x: auto; text-align: center; }
 .mermaid svg { max-width: 100%; height: auto; }
 .plain-text { white-space: pre-wrap; font-family: var(--mono); }
+.article-shell.form-essay .article-content { font-family: ui-serif, "Songti SC", "STSong", serif; font-size: 17px; line-height: 2.05; }
+.article-shell.form-note { background-image: linear-gradient(to bottom, transparent 35px, color-mix(in srgb, var(--line) 42%, transparent) 36px); background-size: 100% 36px; }
+.article-shell.form-note > article { background: color-mix(in srgb, var(--paper) 94%, transparent); }
+.article-shell.form-moment, .article-shell.form-excerpt { width: min(780px, calc(100% - 64px)); padding: 38px 48px; }
+.article-shell.form-moment .article-content { font-size: 19px; line-height: 2; }
+.article-shell.form-moment .article-content p:first-child, .article-shell.form-excerpt .article-content p:first-child { margin-top: 0; }
+.article-shell.form-excerpt .article-content { position: relative; padding: 30px 32px 27px 46px; border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line)); border-radius: 15px; background: color-mix(in srgb, var(--accent-soft) 52%, var(--paper)); font: 19px/2 ui-serif, "Songti SC", "STSong", serif; }
+.article-shell.form-excerpt .article-content::before { content: "“"; position: absolute; top: 13px; left: 17px; color: var(--accent); font: 42px/1 ui-serif, Georgia, serif; opacity: .65; }
+.article-detail-source { margin: 17px 4px 0; justify-content: flex-end; }
 .article-neighbors { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 56px; padding-top: 25px; border-top: 1px solid var(--line); font-size: 13px; }
 .article-neighbors a { display: grid; gap: 7px; }
 .article-neighbors a.next { text-align: right; }
@@ -211,7 +232,11 @@ input:focus, textarea:focus, select:focus, button:focus-visible, a:focus-visible
   .section-heading h2 { font-size: 19px; }
   .section-heading > .text-link { font-size: 11px; }
   .article-card { gap: 14px; padding: 25px 0; }
+  .article-card.form-note { padding-left: 14px; }
+  .article-card.form-moment, .article-card.form-excerpt { margin: 12px 0; padding: 20px 18px; }
   .article-card h2 { font-size: 18px; }
+  .moment-card-copy { font-size: 16px; }
+  .excerpt-card-copy { padding-left: 23px; font-size: 16px; }
   .article-arrow { width: 30px; height: 30px; }
   .article-meta { font-size: 10px; gap: 8px; }
   .article-summary { font-size: 12px; }
@@ -219,6 +244,8 @@ input:focus, textarea:focus, select:focus, button:focus-visible, a:focus-visible
   .footer-links > span { flex-basis: 100%; }
   .site-footer { flex-direction: column; gap: 22px; }
   .article-shell { width: 100%; border: 0; border-radius: 0; padding: 30px 20px; margin: 0 auto 35px; box-shadow: none; }
+  .article-shell.form-moment, .article-shell.form-excerpt { width: 100%; padding: 30px 20px; }
+  .article-shell.form-excerpt .article-content { padding: 25px 22px 22px 37px; font-size: 17px; }
   .article-heading h1 { font-size: 28px; }
   .article-content { font-size: 15px; }
   .article-content h2 { font-size: 22px; }

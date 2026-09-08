@@ -8,10 +8,18 @@
   const saveState = document.querySelector('[data-save-state]');
   const articleId = formElement?.querySelector('[name="id"]')?.value;
   const markdownTools = document.querySelector('[data-markdown-tools]');
+  const contentForm = document.querySelector('[data-content-form]');
+  const titleInput = document.querySelector('[data-title-input]');
+  const titleLabel = document.querySelector('[data-title-label]');
+  const titleHint = document.querySelector('[data-title-hint]');
+  const excerptFields = document.querySelector('[data-excerpt-fields]');
+  const classificationLock = document.querySelector('[data-classification-lock]');
+  const categorySelect = formElement?.querySelector('[name="categoryId"]');
   if (!editor || !preview) return;
 
   let timer;
   let autoSaveTimer;
+  // 请求发出后用户可能继续编辑；版本号用来避免把新修改误标为“已保存”。
   let changeVersion = 0;
   let previewVisible = false;
   const csrf = document.querySelector('meta[name="_csrf"]')?.content;
@@ -48,6 +56,10 @@
     field.addEventListener('change', schedule);
   });
   type.addEventListener('change', updateToolVisibility);
+  contentForm?.addEventListener('change', () => updateContentFormFields(true));
+  categorySelect?.addEventListener('change', () => {
+    if (classificationLock) classificationLock.checked = true;
+  });
   toggle?.addEventListener('click', () => {
     previewVisible = !previewVisible;
     preview.hidden = !previewVisible;
@@ -88,6 +100,7 @@
     }
     const asset = await response.json();
     const label = asset.name.replace(/[\[\]]/g, '');
+    // 服务器只返回站内资源 URL，编辑器按正文格式生成最小可用引用。
     let insertion;
     if (type.value === 'MARKDOWN') insertion = asset.mimeType.startsWith('image/') ? `\n![${label}](${asset.url})\n` : `\n[${label}](${asset.url})\n`;
     else if (type.value === 'HTML') insertion = asset.mimeType.startsWith('image/') ? `\n<img src="${asset.url}" alt="${label}">\n` : `\n<a href="${asset.url}">${label}</a>\n`;
@@ -96,7 +109,10 @@
     editor.setRangeText(insertion, start, editor.selectionEnd, 'end');
     editor.dispatchEvent(new Event('input'));
     state.textContent = '上传成功，已插入正文';
-    if (mediaUpload) mediaUpload.value = '';
+    if (mediaUpload) {
+      mediaUpload.value = '';
+      mediaUpload.dispatchEvent(new Event('change', { bubbles: true }));
+    }
     return true;
   }
 
@@ -113,6 +129,37 @@
 
   function updateToolVisibility() {
     if (markdownTools) markdownTools.hidden = type.value !== 'MARKDOWN';
+  }
+
+  function updateContentFormFields(userInitiated = false) {
+    if (!contentForm || !titleInput) return;
+    const automatic = contentForm.value === '';
+    // 空值是编辑意图“AI 自动判断”；resolvedForm 是当前已持久化形态，只用于预览字段。
+    const effectiveForm = automatic ? contentForm.dataset.resolvedForm : contentForm.value;
+    const optionalTitle = automatic || effectiveForm === 'MOMENT' || effectiveForm === 'EXCERPT';
+    titleInput.required = !optionalTitle;
+    titleInput.placeholder = automatic ? 'AI 自动判断时可留空'
+      : optionalTitle ? '可留空，系统会生成内部标题' : '请填写文章标题';
+    if (titleLabel) titleLabel.textContent = optionalTitle ? '标题（可选）' : '标题';
+    if (titleHint) {
+      titleHint.textContent = automatic
+        ? '留空后会从正文生成内部标题；AI 判断为动态或摘录时，前台不显示该标题。'
+        : optionalTitle
+          ? '留空后只生成后台、搜索和分享所需的内部标题，正文页不会显示。'
+          : '长文、随笔和笔记需要标题。';
+    }
+    if (excerptFields) excerptFields.hidden = effectiveForm !== 'EXCERPT';
+    const hint = document.querySelector('[data-content-form-hint]');
+    if (hint) {
+      hint.textContent = automatic
+        ? 'AI 会同时判断内容形态、分类和标签，不会锁定结果'
+        : '手动选择后会锁定当前分类结果；切回自动可重新交给 AI';
+    }
+    if (classificationLock) {
+      // 手动形态必然锁定，不让表单再提交互相矛盾的组合。
+      classificationLock.disabled = !automatic;
+      if (userInitiated) classificationLock.checked = !automatic;
+    }
   }
 
   function insertText(text) {
@@ -133,4 +180,5 @@
     else if (button.hasAttribute('data-wrap-link')) insertText(`[${selected || '链接文字'}](https://)`);
   });
   updateToolVisibility();
+  updateContentFormFields();
 })();

@@ -12,6 +12,12 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Component;
 
+/**
+ * Spring AI 与 OpenAI-compatible Chat Completions 接口之间的网关。
+ *
+ * <p>每次调用都使用任务领取时的连接快照创建模型客户端，
+ * 因此后台切换接口不会改变已经开始的任务。本类统一将 SDK 异常转换为不泄露密钥和响应体的业务错误。
+ */
 @Component
 public class OpenAiChatGateway {
     private static final String COMPLETIONS_SUFFIX = "/chat/completions";
@@ -53,6 +59,7 @@ public class OpenAiChatGateway {
     }
 
     private String springAiBaseUrl(URI endpoint) {
+        // Spring AI 接收根地址，而后台保存的是完整 Chat Completions 端点。
         String value = endpoint.toString();
         if (!value.endsWith(COMPLETIONS_SUFFIX)) {
             throw new IllegalStateException("AI 调用路径必须以 /chat/completions 结尾。");

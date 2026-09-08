@@ -93,6 +93,9 @@ services:
     build:
       context: ./apps/blog
       target: runtime
+      args:
+        BLOG_SOURCE_HASH: ${BLOG_SOURCE_HASH:-unversioned}
+        BLOG_BUILD_TESTS: ${BLOG_BUILD_TESTS:-false}
     restart: unless-stopped
     init: true
     user: "10001:10001"

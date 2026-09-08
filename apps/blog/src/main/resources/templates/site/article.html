@@ -2,25 +2,29 @@
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{fragments/site :: head(${pageTitle}, ${description})}"></head>
 <body>
-<div class="reading-progress" data-reading-progress aria-hidden="true"></div>
+<div class="reading-progress" data-reading-progress aria-hidden="true" th:if="${!article.contentForm.compact}"></div>
 <header th:replace="~{fragments/site :: header}"></header>
-<main class="article-shell">
+<main class="article-shell" th:classappend="${'form-' + article.contentForm.name().toLowerCase()}">
     <article>
-        <header class="article-heading">
+        <header class="article-heading" th:classappend="${article.titleDisplayed ? '' : ' titleless'}">
             <p class="breadcrumbs"><a th:href="@{/}">首页</a> / <a th:href="@{/categories/{slug}(slug=${article.category.slug})}" th:text="${article.category.pathName}">分类</a></p>
-            <h1 th:text="${article.title}">文章标题</h1>
+            <h1 th:if="${article.titleDisplayed}" th:text="${article.title}">文章标题</h1>
             <p class="article-meta">
                 <span class="form-badge" th:text="${article.contentForm.label}">长文</span>
                 发布于 <time th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd HH:mm')}">时间</time>
                 <span> · 更新于 <time th:text="${#temporals.format(article.updatedAt, 'yyyy-MM-dd HH:mm')}">时间</time></span>
             </p>
-            <p class="article-lead" th:if="${article.summary}" th:text="${article.summary}">摘要</p>
+            <p class="article-lead" th:if="${article.manualSummary && !article.contentForm.compact}" th:text="${article.summary}">摘要</p>
             <div class="tag-row" th:if="${!article.tags.empty}">
                 <a class="tag" th:each="tag : ${article.tags}" th:href="@{/tags/{slug}(slug=${tag.slug})}" th:text="${tag.name}">标签</a>
             </div>
         </header>
-        <nav class="article-toc" data-article-toc hidden aria-label="文章目录"><strong><span class="eyebrow">ON THIS PAGE</span> 本文目录</strong><ol></ol></nav>
+        <nav class="article-toc" th:if="${!article.contentForm.compact}" data-article-toc hidden aria-label="文章目录"><strong><span class="eyebrow">ON THIS PAGE</span> 本文目录</strong><ol></ol></nav>
         <div class="article-content" data-article-content th:utext="${article.renderedHtml}"></div>
+        <p class="article-source article-detail-source" th:if="${article.contentForm.name() == 'EXCERPT' && (article.sourceCitation != null || article.sourceUrl != null)}">
+            <cite th:if="${article.sourceCitation != null}" th:text="${article.sourceCitation}">出处</cite>
+            <a th:if="${article.sourceUrl != null}" th:href="${article.sourceUrl}" target="_blank" rel="noopener noreferrer">查看来源 ↗</a>
+        </p>
         <nav class="article-neighbors" th:if="${previousArticle != null || nextArticle != null}" aria-label="相邻文章">
             <a th:if="${previousArticle != null}" th:href="@{/posts/{slug}(slug=${previousArticle.slug})}"><small>上一篇</small><span th:text="${previousArticle.title}">上一篇文章</span></a>
             <span th:if="${previousArticle == null}"></span>

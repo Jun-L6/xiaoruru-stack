@@ -10,6 +10,11 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
+/**
+ * {@code blog.*} 配置的强类型边界。
+ *
+ * <p>密钥字段的 {@code toString()} 始终打码，防止配置绑定异常或调试日志泄露凭据。
+ */
 @Validated
 @ConfigurationProperties(prefix = "blog")
 public record BlogProperties(

@@ -15,6 +15,10 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * 博客的 HTTP 安全边界。前台、媒体和健康检查公开，{@code /admin/**} 仅允许单一管理员会话。
+ * 管理密钥可以是明文配置或 bcrypt 哈希；未配置时直接禁用登录。
+ */
 @Configuration
 public class SecurityConfig {
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
@@ -64,6 +68,7 @@ public class SecurityConfig {
                 }
                 secretHash = passwordEncoder.encode(secret);
             } else {
+                // 随机密码不向外暴露，并将账号标记为禁用，避免无密钥误开后台。
                 secretHash = passwordEncoder.encode(UUID.randomUUID().toString());
                 disabled = true;
                 log.warn("Admin login is disabled: configure blog.admin.secret or blog.admin.secret-hash");

@@ -24,6 +24,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 本地媒体文件的写入、读取与回收站服务。
+ *
+ * <p>文件类型根据内容特征判定，不信任浏览器提供的 MIME 或扩展名。
+ * 所有路径都会校验 {@code data/uploads} 目录边界，写入流程另外拒绝符号链接目录。
+ */
 @Service
 public class MediaService {
     private static final Map<String, String> EXTENSIONS = Map.of(
@@ -66,6 +72,7 @@ public class MediaService {
             throw new IllegalArgumentException("文件超过大小限制");
         }
         byte[] bytes = file.getBytes();
+        // 使用文件头和文本特征确定实际类型，声明类型只用于交叉校验。
         String mime = detectMime(bytes, file.getOriginalFilename());
         String originalName = safeOriginalName(file.getOriginalFilename());
         String extension = EXTENSIONS.get(mime);
@@ -105,6 +112,7 @@ public class MediaService {
         try {
             return media.saveAndFlush(asset);
         } catch (RuntimeException exception) {
+            // 数据库记录失败时回滚已写入的物理文件，避免产生孤儿资源。
             try {
                 Files.deleteIfExists(target);
             } catch (IOException cleanupFailure) {

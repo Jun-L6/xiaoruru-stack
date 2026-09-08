@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from manager.__main__ import deployment_credentials, execute, initialize, lock
-from manager.runtime import Runtime, clean_env
+from manager.runtime import BLOG_SCHEMA_GENERATION, Runtime, blog_source_hash, clean_env
 from manager.storage import CERT_NAME, ROOT, StackError, Store, validate, write
 
 
@@ -22,6 +22,8 @@ def fixture():
     with tempfile.TemporaryDirectory(prefix="xiaoruru-manager-test-") as temporary:
         root = Path(temporary).resolve()
         shutil.copytree(ROOT / "config", root / "config")
+        shutil.copytree(ROOT / "apps/blog", root / "apps/blog",
+                        ignore=shutil.ignore_patterns("target", ".idea"))
         shutil.copyfile(ROOT / "compose.yaml", root / "compose.yaml")
         store = Store(root)
         config = store.defaults()
@@ -292,7 +294,7 @@ class LifecycleTest(unittest.TestCase):
         with fixture() as (store, _):
             runtime = Mock()
             runtime.config = store.load()
-            runtime.image_exists.return_value = False
+            runtime.blog_image_current.return_value = False
             with patch("manager.__main__.Runtime", return_value=runtime):
                 execute(argparse.Namespace(command="deploy", module=None, config=None, yes=False), store)
             runtime.preflight.assert_called_once_with()
@@ -316,11 +318,59 @@ class LifecycleTest(unittest.TestCase):
             runtime.up = Mock()
             runtime.sites = Mock()
             runtime.official_installer = Mock()
-            with patch("manager.runtime.run", return_value=subprocess.CompletedProcess([], 0)):
-                runtime.start("blog")
+            runtime.image_exists = Mock(return_value=True)
+            runtime.blog_image_current = Mock(return_value=True)
+            runtime.ensure_blog_schema_compatible = Mock()
+            runtime.start("blog")
             runtime.gateway.assert_called_once()
             runtime.up.assert_called_once_with(["rurublog"])
             runtime.official_installer.assert_not_called()
+            self.assertEqual(BLOG_SCHEMA_GENERATION, runtime.store.state()["blog_schema_generation"])
+
+    def test_blog_source_hash_changes_with_build_input(self):
+        with fixture() as (store, _):
+            before = blog_source_hash(store.root)
+            source = store.root / "apps/blog/src/main/resources/application.yml"
+            source.write_text(source.read_text() + "\n# source hash test\n")
+            self.assertNotEqual(before, blog_source_hash(store.root))
+
+    def test_incompatible_blog_schema_requires_explicit_reset(self):
+        with fixture() as (store, runtime):
+            database = store.data / "blog/runtime/database"
+            database.mkdir()
+            (database / "blog.mv.db").write_text("incompatible")
+            with self.assertRaisesRegex(StackError, "reset blog"):
+                runtime.ensure_blog_schema_compatible()
+            store.mark("blog_schema_generation", BLOG_SCHEMA_GENERATION)
+            runtime.ensure_blog_schema_compatible()
+
+    def test_reset_blog_removes_only_blog_data_and_recreates_config(self):
+        with fixture() as (store, runtime):
+            (store.data / "blog/runtime/article.txt").write_text("delete")
+            (store.data / "vpn/xui/keep.txt").write_text("keep")
+            runtime.compose = Mock()
+            runtime.running = Mock(return_value=False)
+            runtime.reset_blog()
+            runtime.compose.assert_called_once_with("stop", "rurublog", capture=True, timeout=180)
+            self.assertFalse((store.data / "blog/runtime/article.txt").exists())
+            self.assertTrue((store.data / "blog/config/application.yml").is_file())
+            self.assertTrue((store.data / "vpn/xui/keep.txt").is_file())
+            self.assertIsNone(store.state()["blog_schema_generation"])
+
+    def test_reset_blog_requires_two_confirmations_or_yes_flag(self):
+        with fixture() as (store, _):
+            runtime = Mock()
+            with patch("manager.__main__.Runtime", return_value=runtime), \
+                    patch("manager.__main__.yes", side_effect=[True, False]) as confirm, \
+                    patch("sys.stdin.isatty", return_value=True):
+                execute(argparse.Namespace(command="reset", module="blog", config=None, yes=False), store)
+            self.assertEqual(2, confirm.call_count)
+            runtime.reset_blog.assert_not_called()
+            runtime.reset_mock()
+            with patch("manager.__main__.Runtime", return_value=runtime):
+                execute(argparse.Namespace(command="reset", module="blog", config=None, yes=True), store)
+            runtime.preflight.assert_called_once_with()
+            runtime.reset_blog.assert_called_once_with()
 
     def test_gateway_failure_prevents_business_start(self):
         with fixture() as (_, runtime):
@@ -576,6 +626,7 @@ class ComposeTest(unittest.TestCase):
                                  "service_healthy")
             self.assertFalse(merged["services"]["rurublog"].get("ports"))
             self.assertEqual(set(merged["services"]["rurublog"]["depends_on"]), {"nginx-ui"})
+            self.assertEqual(merged["services"]["rurublog"]["build"]["args"]["BLOG_BUILD_TESTS"], "false")
 
     def test_official_compose_override_merges_by_mount_target(self):
         with fixture() as (store, runtime):

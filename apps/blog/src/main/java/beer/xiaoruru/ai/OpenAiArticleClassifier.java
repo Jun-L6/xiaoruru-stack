@@ -8,6 +8,12 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 将博客分类树和文章组装成 OpenAI-compatible 请求，并把模型 JSON 转换为结构化结果。
+ *
+ * <p>分类候选始终来自数据库中启用的叶子分类。文章内容作为不可信数据放入 JSON，
+ * 模型首次输出无法解析时只进行一次格式修复，业务合法性由 {@link AiJobService} 再校验。
+ */
 @Component
 public class OpenAiArticleClassifier implements ArticleClassifier {
     private static final String SYSTEM_PROMPT = """
@@ -84,6 +90,7 @@ public class OpenAiArticleClassifier implements ArticleClassifier {
         try {
             return parse(response);
         } catch (RuntimeException firstFailure) {
+            // 修复请求不再携带文章和分类树，只要求将已有输出整形为 JSON。
             String clipped = response.length() <= 12_000 ? response : response.substring(0, 12_000);
             String repaired = gateway.complete(connection, """
                     你只负责把输入修复成合法 JSON，不增加解释或 Markdown。输出字段必须严格为：
