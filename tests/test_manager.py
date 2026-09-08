@@ -83,7 +83,15 @@ class StorageTest(unittest.TestCase):
             config = runtime.config
             config["enabled"] = ["blog"]
             self.assertEqual(store.domains(config),
-                             ["nginx-ui.xiaoruru.beer", "xiaoruru.beer"])
+                             ["nginx-ui.xiaoruru.beer", "www.xiaoruru.beer", "xiaoruru.beer"])
+
+    def test_blog_site_redirects_www_to_configured_canonical_domain(self):
+        with fixture() as (_, runtime):
+            site = runtime.render_site("50-rurublog")
+            self.assertIn("server_name xiaoruru.beer www.xiaoruru.beer;", site)
+            self.assertIn("server_name www.xiaoruru.beer;", site)
+            self.assertEqual(2, site.count("return 301 https://xiaoruru.beer$request_uri;"))
+            self.assertNotIn("__BLOG_WWW_DOMAIN__", site)
 
     def test_bad_domain_and_network_injection_rejected(self):
         with fixture() as (store, runtime):

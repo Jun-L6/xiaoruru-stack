@@ -9,7 +9,7 @@ import subprocess
 import sys
 import urllib.request
 
-from .storage import CERT_NAME, MODULES, StackError, Store, directory, safe_path, write
+from .storage import CERT_NAME, MODULES, StackError, Store, directory, safe_path, www_alias, write
 
 CPA_INSTALLER = "https://raw.githubusercontent.com/seakee/CPA-Manager-Plus/main/bin/install-cpamp.sh"
 SERVICES = {"gateway": ["nginx-ui"], "vpn": ["xui", "gost"],
@@ -476,7 +476,8 @@ class Runtime:
         domains = self.config["domains"]
         values = {"NGINX_UI_DOMAIN": domains["gateway"], "XUI_DOMAIN": domains["vpn"],
                   "CPAMP_DOMAIN": domains["cpamp"], "CPA_API_DOMAIN": domains["cpa_api"],
-                  "BLOG_DOMAIN": domains["blog"], "CERT_NAME": CERT_NAME,
+                  "BLOG_DOMAIN": domains["blog"], "BLOG_WWW_DOMAIN": www_alias(domains["blog"]),
+                  "CERT_NAME": CERT_NAME,
                   "XUI_PANEL_PORT": "2053", "XUI_SUB_PORT": "2096"}
         content = (self.root / f"config/nginx-ui/sites/{name}.conf.template").read_text()
         for key, value in values.items():

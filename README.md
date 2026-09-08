@@ -10,6 +10,8 @@
 | blog | rurublog | gateway |
 | tools | certbot、panel-init 等一次性任务 | 按任务需要 |
 
+博客使用配置中的 `blog` 域名作为唯一规范地址，并自动让对应的 `www` 地址通过 HTTP 301 跳转到规范地址；共享证书会同时包含两者。
+
 全部业务启用时有 5 个常驻容器；启用 GOST 后为 6 个。博客不依赖 CPA。
 
 ## 开始使用

@@ -84,6 +84,24 @@ def main():
             response = conn.getresponse()
             assert response.status == 200 and response.read() == b"local-acme-ok"
             conn.close()
+            conn = http.client.HTTPConnection("127.0.0.1", http_port, timeout=10)
+            conn.request("GET", "/article?id=1", headers={"Host": "www.blog.xiaoruru.invalid"})
+            response = conn.getresponse()
+            assert response.status == 301, response.status
+            assert response.getheader("Location") == "https://blog.xiaoruru.invalid/article?id=1"
+            response.read()
+            conn.close()
+            conn = http.client.HTTPSConnection("127.0.0.1", tls_port,
+                        context=ssl._create_unverified_context(), timeout=10)
+            conn.sock = ssl._create_unverified_context().wrap_socket(
+                    socket.create_connection(("127.0.0.1", tls_port), timeout=10),
+                    server_hostname="www.blog.xiaoruru.invalid")
+            conn.request("GET", "/article?id=1", headers={"Host": "www.blog.xiaoruru.invalid"})
+            response = conn.getresponse()
+            assert response.status == 301, response.status
+            assert response.getheader("Location") == "https://blog.xiaoruru.invalid/article?id=1"
+            response.read()
+            conn.close()
             conn = http.client.HTTPSConnection("127.0.0.1", tls_port,
                         context=ssl._create_unverified_context(), timeout=10)
             conn.sock = ssl._create_unverified_context().wrap_socket(
@@ -94,7 +112,7 @@ def main():
             assert response.status == 200, response.status
             response.read()
             conn.close()
-            print("Nginx UI healthy; all five TLS vhosts validate with absent backends; ACME GET 200; HTTPS UI 200.")
+            print("Nginx UI healthy; all TLS vhosts validate; ACME GET 200; blog www redirects to canonical; HTTPS UI 200.")
         except Exception:
             if created:
                 print(docker("logs", "--tail", "60", name))

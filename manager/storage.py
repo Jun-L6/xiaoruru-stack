@@ -17,6 +17,11 @@ class StackError(Exception):
     pass
 
 
+def www_alias(domain):
+    """Return the alternate www/apex name used to redirect to the configured blog domain."""
+    return domain[4:] if domain.startswith("www.") else "www." + domain
+
+
 def safe_path(path):
     path = Path(path).absolute()
     for part in (path, *path.parents):
@@ -208,4 +213,7 @@ class Store:
             keys += ["cpamp", "cpa_api"]
         if "blog" in config["enabled"]:
             keys.append("blog")
-        return sorted(config["domains"][key] for key in keys)
+        domains = {config["domains"][key] for key in keys}
+        if "blog" in config["enabled"]:
+            domains.add(www_alias(config["domains"]["blog"]))
+        return sorted(domains)
