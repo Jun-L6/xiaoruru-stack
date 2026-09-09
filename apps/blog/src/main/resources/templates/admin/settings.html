@@ -7,11 +7,54 @@
     <div th:replace="~{fragments/admin :: flash}"></div>
     <div class="admin-title"><div><p class="eyebrow">SETTINGS</p><h1>网站设置</h1></div></div>
     <form th:action="@{/admin/settings}" method="post" class="panel stack-form">
-        <label>站点名称<input name="site.name" th:value="${settings['site.name']}" maxlength="100" required></label>
-        <label>副标题<input name="site.subtitle" th:value="${settings['site.subtitle']}" maxlength="200"></label>
-        <label>作者<input name="site.author" th:value="${settings['site.author']}" maxlength="100"></label>
-        <label>页脚<input name="site.footer" th:value="${settings['site.footer']}" maxlength="300"></label>
-        <label>关于页面（Markdown）<textarea name="site.about" rows="14" th:text="${settings['site.about']}"></textarea></label>
+        <section class="settings-section">
+            <h2>站点信息</h2>
+            <label>站点名称<input name="site.name" th:value="${settings['site.name']}" maxlength="100" required></label>
+            <label>副标题<input name="site.subtitle" th:value="${settings['site.subtitle']}" maxlength="200"></label>
+            <label>作者<input name="site.author" th:value="${settings['site.author']}" maxlength="100"></label>
+            <label>页脚<input name="site.footer" th:value="${settings['site.footer']}" maxlength="300"></label>
+            <label>关于页面（Markdown）<textarea name="site.about" rows="14" th:text="${settings['site.about']}"></textarea></label>
+        </section>
+        <section class="settings-section">
+            <h2>文章阅读样式</h2>
+            <p class="muted settings-help">设置会应用到所有公开文章。窄屏设备会自动使用适合手机的布局。</p>
+            <div class="settings-grid">
+                <label>正文宽度
+                    <select name="site.article-width">
+                        <option value="narrow" th:selected="${settings['site.article-width'] == 'narrow'}">紧凑（700px）</option>
+                        <option value="standard" th:selected="${settings['site.article-width'] == 'standard'}">标准（780px）</option>
+                        <option value="wide" th:selected="${settings['site.article-width'] == 'wide'}">宽屏（860px）</option>
+                    </select>
+                </label>
+                <label>正文字号
+                    <select name="site.article-font-size">
+                        <option value="small" th:selected="${settings['site.article-font-size'] == 'small'}">较小（15px）</option>
+                        <option value="standard" th:selected="${settings['site.article-font-size'] == 'standard'}">标准（16px）</option>
+                        <option value="large" th:selected="${settings['site.article-font-size'] == 'large'}">较大（17px）</option>
+                    </select>
+                </label>
+                <label>正文行距
+                    <select name="site.article-line-height">
+                        <option value="compact" th:selected="${settings['site.article-line-height'] == 'compact'}">紧凑（1.62）</option>
+                        <option value="standard" th:selected="${settings['site.article-line-height'] == 'standard'}">标准（1.75）</option>
+                        <option value="relaxed" th:selected="${settings['site.article-line-height'] == 'relaxed'}">舒展（1.9）</option>
+                    </select>
+                </label>
+                <label>代码块样式
+                    <select name="site.code-theme">
+                        <option value="soft" th:selected="${settings['site.code-theme'] == 'soft'}">柔和浅色</option>
+                        <option value="paper" th:selected="${settings['site.code-theme'] == 'paper'}">纯净纸张</option>
+                        <option value="dark" th:selected="${settings['site.code-theme'] == 'dark'}">经典深色</option>
+                    </select>
+                </label>
+                <label>文章目录
+                    <select name="site.toc-mode">
+                        <option value="floating" th:selected="${settings['site.toc-mode'] == 'floating'}">显示悬浮目录</option>
+                        <option value="hidden" th:selected="${settings['site.toc-mode'] == 'hidden'}">隐藏目录</option>
+                    </select>
+                </label>
+            </div>
+        </section>
         <button class="primary" type="submit">保存设置</button>
     </form>
 </main>

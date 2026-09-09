@@ -88,12 +88,14 @@
 
   function buildTableOfContents(article) {
     const toc = document.querySelector('[data-article-toc]');
-    if (!toc) return;
+    const rail = document.querySelector('[data-article-toc-rail]');
+    const toggle = document.querySelector('[data-article-toc-toggle]');
+    if (!toc || !rail || !toggle) return;
     const headings = [...article.querySelectorAll('h2, h3')];
     if (headings.length < 2) return;
     const list = toc.querySelector('ol');
     list.textContent = '';
-    headings.forEach((heading, index) => {
+    const items = headings.map((heading, index) => {
       if (!heading.id) heading.id = `section-${index + 1}`;
       const item = document.createElement('li');
       if (heading.tagName === 'H3') item.className = 'toc-level-3';
@@ -102,8 +104,92 @@
       link.textContent = heading.textContent;
       item.append(link);
       list.append(item);
+      return item;
     });
     toc.hidden = false;
+    toggle.hidden = false;
+
+    let activeIndex = -1;
+    function setActive(index) {
+      if (index === activeIndex || index < 0) return;
+      activeIndex = index;
+      items.forEach((item, itemIndex) => {
+        const active = itemIndex === index;
+        item.classList.toggle('is-active', active);
+        const link = item.querySelector('a');
+        if (active) link.setAttribute('aria-current', 'location');
+        else link.removeAttribute('aria-current');
+      });
+      const item = items[index];
+      const visibleTop = toc.scrollTop + 44;
+      const visibleBottom = toc.scrollTop + toc.clientHeight - 12;
+      if (item.offsetTop < visibleTop) toc.scrollTop = Math.max(0, item.offsetTop - 52);
+      else if (item.offsetTop + item.offsetHeight > visibleBottom) {
+        toc.scrollTop = item.offsetTop + item.offsetHeight - toc.clientHeight + 12;
+      }
+    }
+
+    function updateActive() {
+      const readingLine = Math.min(280, Math.max(150, window.innerHeight * .28));
+      let index = 0;
+      headings.forEach((heading, headingIndex) => {
+        if (heading.getBoundingClientRect().top <= readingLine) index = headingIndex;
+      });
+      if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2) {
+        index = headings.length - 1;
+      }
+      setActive(index);
+    }
+
+    let updateQueued = false;
+    function scheduleActiveUpdate() {
+      if (updateQueued) return;
+      updateQueued = true;
+      requestAnimationFrame(() => {
+        updateQueued = false;
+        updateActive();
+      });
+    }
+    addEventListener('scroll', scheduleActiveUpdate, { passive: true });
+    addEventListener('resize', scheduleActiveUpdate);
+
+    const narrowScreen = matchMedia('(max-width: 1050px)');
+    function setOpen(open) {
+      rail.classList.toggle('is-open', open);
+      toggle.setAttribute('aria-expanded', String(open));
+      if (narrowScreen.matches) {
+        toc.inert = !open;
+        toc.setAttribute('aria-hidden', String(!open));
+      }
+    }
+    function syncResponsiveState() {
+      if (narrowScreen.matches) setOpen(false);
+      else {
+        rail.classList.remove('is-open');
+        toggle.setAttribute('aria-expanded', 'false');
+        toc.inert = false;
+        toc.removeAttribute('aria-hidden');
+      }
+    }
+    toggle.addEventListener('click', () => setOpen(!rail.classList.contains('is-open')));
+    list.addEventListener('click', (event) => {
+      const link = event.target.closest('a');
+      if (!link) return;
+      setActive(items.indexOf(link.parentElement));
+      if (narrowScreen.matches) setOpen(false);
+    });
+    document.addEventListener('click', (event) => {
+      if (narrowScreen.matches && rail.classList.contains('is-open') && !rail.contains(event.target)) setOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && rail.classList.contains('is-open')) {
+        setOpen(false);
+        toggle.focus();
+      }
+    });
+    narrowScreen.addEventListener('change', syncResponsiveState);
+    syncResponsiveState();
+    updateActive();
   }
   window.enhanceArticle = enhance;
   document.addEventListener('DOMContentLoaded', () => {

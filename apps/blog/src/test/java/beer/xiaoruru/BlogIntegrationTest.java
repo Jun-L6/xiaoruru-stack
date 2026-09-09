@@ -71,6 +71,44 @@ class BlogIntegrationTest {
     }
 
     @Test
+    void readingStyleSettingsAreValidatedAndRenderedOnArticles() throws Exception {
+        mvc.perform(post("/admin/settings").with(user("admin").roles("ADMIN")).with(csrf())
+                        .param("site.article-width", "wide")
+                        .param("site.article-font-size", "large")
+                        .param("site.article-line-height", "compact")
+                        .param("site.code-theme", "paper")
+                        .param("site.toc-mode", "floating"))
+                .andExpect(status().is3xxRedirection());
+
+        Long categoryId = categories.findBySlug("software-development").orElseThrow().getId();
+        Article article = articleService.save(new ArticleCommand(null, "阅读样式", "reading-style-test", "",
+                ContentType.MARKDOWN, ContentForm.LONGFORM, "## 第一节\n\n内容\n\n## 第二节\n\n内容", categoryId,
+                "", "", "", false, true, "", ""));
+        articleService.publish(article.getId());
+
+        mvc.perform(get("/posts/reading-style-test"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-reading-width=\"wide\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-reading-size=\"large\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-reading-leading=\"compact\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-code-theme=\"paper\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-article-toc")));
+
+        mvc.perform(post("/admin/settings").with(user("admin").roles("ADMIN")).with(csrf())
+                        .param("site.article-width", "unsafe-value")
+                        .param("site.article-font-size", "unsafe-value")
+                        .param("site.article-line-height", "unsafe-value")
+                        .param("site.code-theme", "unsafe-value")
+                        .param("site.toc-mode", "unsafe-value"))
+                .andExpect(status().is3xxRedirection());
+        mvc.perform(get("/posts/reading-style-test"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-reading-width=\"standard\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-reading-size=\"standard\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-reading-leading=\"standard\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-code-theme=\"soft\"")));
+    }
+
+    @Test
     void authenticatedAdminCanOpenEditorAndCsrfProtectsWrites() throws Exception {
         mvc.perform(get("/admin/articles/new").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())

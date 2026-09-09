@@ -4,8 +4,10 @@
 <body>
 <div class="reading-progress" data-reading-progress aria-hidden="true" th:if="${!article.contentForm.compact}"></div>
 <header th:replace="~{fragments/site :: header}"></header>
-<main class="article-shell" th:classappend="${'form-' + article.contentForm.name().toLowerCase()}">
-    <article>
+<main class="article-shell" th:classappend="${'form-' + article.contentForm.name().toLowerCase()}"
+      th:attr="data-reading-width=${site['site.article-width']},data-reading-size=${site['site.article-font-size']},data-reading-leading=${site['site.article-line-height']},data-code-theme=${site['site.code-theme']}">
+    <div class="article-layout">
+      <article>
         <header class="article-heading" th:classappend="${article.titleDisplayed ? '' : ' titleless'}">
             <p class="breadcrumbs"><a th:href="@{/}">首页</a> / <a th:href="@{/categories/{slug}(slug=${article.category.slug})}" th:text="${article.category.pathName}">分类</a></p>
             <h1 th:if="${article.titleDisplayed}" th:text="${article.title}">文章标题</h1>
@@ -19,7 +21,6 @@
                 <a class="tag" th:each="tag : ${article.tags}" th:href="@{/tags/{slug}(slug=${tag.slug})}" th:text="${tag.name}">标签</a>
             </div>
         </header>
-        <nav class="article-toc" th:if="${!article.contentForm.compact}" data-article-toc hidden aria-label="文章目录"><strong><span class="eyebrow">ON THIS PAGE</span> 本文目录</strong><ol></ol></nav>
         <div class="article-content" data-article-content th:utext="${article.renderedHtml}"></div>
         <p class="article-source article-detail-source" th:if="${article.contentForm.name() == 'EXCERPT' && (article.sourceCitation != null || article.sourceUrl != null)}">
             <cite th:if="${article.sourceCitation != null}" th:text="${article.sourceCitation}">出处</cite>
@@ -30,7 +31,16 @@
             <span th:if="${previousArticle == null}"></span>
             <a class="next" th:if="${nextArticle != null}" th:href="@{/posts/{slug}(slug=${nextArticle.slug})}"><small>下一篇</small><span th:text="${nextArticle.title}">下一篇文章</span></a>
         </nav>
-    </article>
+      </article>
+      <aside class="article-toc-rail" th:if="${!article.contentForm.compact && site['site.toc-mode'] != 'hidden'}" data-article-toc-rail>
+          <button class="article-toc-toggle" type="button" data-article-toc-toggle aria-controls="article-toc" aria-expanded="false" hidden>
+              <span>本文目录</span><span aria-hidden="true">⌃</span>
+          </button>
+          <nav id="article-toc" class="article-toc" data-article-toc hidden aria-label="文章目录">
+              <strong><span class="eyebrow">ON THIS PAGE</span> 本文目录</strong><ol></ol>
+          </nav>
+      </aside>
+    </div>
 </main>
 <footer th:replace="~{fragments/site :: footer}"></footer>
 <script th:src="@{/webjars/highlightjs__cdn-assets/11.11.1/highlight.min.js}"></script>
