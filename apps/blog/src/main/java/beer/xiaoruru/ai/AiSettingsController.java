@@ -15,6 +15,7 @@ public class AiSettingsController {
     @GetMapping("/admin/ai-settings")
     public String page(Model model) {
         model.addAttribute("ai", settings.view());
+        model.addAttribute("embedding", settings.embeddingView());
         return "admin/ai-settings";
     }
 
@@ -32,6 +33,25 @@ public class AiSettingsController {
             settings.save(new AiSettingsService.Form(mode, baseUrl, apiKey, model, completionsPath,
                     timeoutSeconds, temperature, clearKey));
             redirect.addFlashAttribute("message", "AI 设置已保存，对后续调用生效；未发起模型测试请求。");
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            redirect.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/admin/ai-settings";
+    }
+
+    @PostMapping("/admin/embedding-settings")
+    public String saveEmbedding(@RequestParam String mode,
+            @RequestParam(defaultValue = "") String baseUrl,
+            @RequestParam(defaultValue = "") String apiKey,
+            @RequestParam(defaultValue = "") String model,
+            @RequestParam(defaultValue = "/v1/embeddings") String embeddingsPath,
+            @RequestParam(defaultValue = "45") int timeoutSeconds,
+            @RequestParam(defaultValue = "false") boolean clearKey,
+            RedirectAttributes redirect) {
+        try {
+            settings.saveEmbedding(new AiSettingsService.EmbeddingForm(mode, baseUrl, apiKey, model,
+                    embeddingsPath, timeoutSeconds, clearKey));
+            redirect.addFlashAttribute("message", "语义相似检测设置已保存；保存时没有发送测试请求。");
         } catch (IllegalArgumentException | IllegalStateException exception) {
             redirect.addFlashAttribute("error", exception.getMessage());
         }

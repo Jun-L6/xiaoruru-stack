@@ -25,6 +25,6 @@ public class TaskExecutorConfig {
     @Bean(name = "aiTaskExecutor", destroyMethod = "shutdownNow")
     ExecutorService aiTaskExecutor() {
         return Executors.newSingleThreadExecutor(Thread.ofPlatform()
-                .name("ai-classifier-", 0).daemon(true).factory());
+                .name("ai-task-", 0).daemon(true).factory());
     }
 }

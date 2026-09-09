@@ -113,6 +113,35 @@ public class ArticleService {
         return saved;
     }
 
+    /** 保存已由对话生成器完成标题、分类和标签整理的草稿，不再重复触发自动分类。 */
+    @Transactional
+    public Article saveGenerated(GeneratedArticleDraft draft) {
+        if (draft == null || draft.title() == null || draft.title().isBlank()
+                || draft.markdown() == null || draft.markdown().isBlank()) {
+            throw new IllegalArgumentException("生成结果缺少标题或正文");
+        }
+        Category category = taxonomy.requireLeafBySlug(draft.categorySlug());
+        ContentForm form = draft.contentForm() == null ? ContentForm.LONGFORM : draft.contentForm();
+        String tags = draft.tags() == null ? "" : draft.tags().stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::strip).limit(5)
+                .collect(java.util.stream.Collectors.joining(","));
+        Article article = save(new ArticleCommand(null, clip(draft.title().strip(), 200), "",
+                clip(blankToNull(draft.summary()), 1000), ContentType.MARKDOWN, form,
+                draft.markdown(), category.getId(), tags, null, draft.sourceUrl(),
+                false, true, "", clip(blankToNull(draft.summary()), 500)));
+        article.setTitleOrigin(TitleOrigin.MANUAL);
+        article.setSummaryOrigin(SummaryOrigin.AI);
+        article.setClassificationSource(ClassificationSource.AI);
+        article.setClassificationStatus(ClassificationStatus.APPLIED);
+        article.setClassificationConfidence(null);
+        article.setClassificationReason("由分享对话生成并完成分类");
+        article.setClassifiedContentHash(article.getContentHash());
+        article.setClassifiedAt(Instant.now());
+        article.setClassificationLocked(true);
+        return article;
+    }
+
     @Transactional
     public Article publish(Long id) {
         Article article = require(id);

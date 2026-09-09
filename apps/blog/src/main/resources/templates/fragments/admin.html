@@ -24,6 +24,7 @@
         <a th:href="@{/admin/categories}" th:attr="aria-current=${currentPath.startsWith('/admin/categories') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('layers')}"></svg>分类</a>
         <a th:href="@{/admin/tags}" th:attr="aria-current=${currentPath.startsWith('/admin/tags') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('tag')}"></svg>标签</a>
         <a th:href="@{/admin/media}" th:attr="aria-current=${currentPath.startsWith('/admin/media') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('image')}"></svg>资源库</a>
+        <a th:href="@{/admin/conversation-imports}" th:attr="aria-current=${currentPath.startsWith('/admin/conversation-imports') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('spark')}"></svg>对话转文章</a>
         <p class="nav-label">TOOLS &amp; SETTINGS</p>
         <a th:href="@{/admin/ai-settings}" th:attr="aria-current=${currentPath.startsWith('/admin/ai-settings') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('settings')}"></svg>AI 设置</a>
         <a th:href="@{/admin/ai-jobs}" th:attr="aria-current=${currentPath.startsWith('/admin/ai-jobs') ? 'page' : null}"><svg th:replace="~{fragments/icons :: icon('spark')}"></svg>AI 任务</a>

@@ -19,7 +19,7 @@ SITES = {"gateway": ["10-nginx-ui"], "vpn": ["20-3x-ui"],
 MINIMUM_COMPOSE = (2, 24, 4)
 BLOG_SOURCE_LABEL = "beer.xiaoruru.blog.source-hash"
 # Identifies the database layout accepted by the current blog image.
-BLOG_SCHEMA_GENERATION = "schema-v1"
+BLOG_SCHEMA_GENERATION = "schema-v2"
 
 
 def blog_source_hash(root):

@@ -30,6 +30,35 @@
         <noscript>本页面需要 JavaScript 切换配置字段。仍可选择关闭 AI 并保存。</noscript>
         <button class="primary" type="submit">保存设置</button>
     </form>
+    <section class="panel stack-form">
+        <div><p class="eyebrow">OPTIONAL</p><h2>语义相似检测</h2></div>
+        <p>这是博客容器内的可选 HTTP 调用，不会增加容器、向量数据库或本地模型。关闭后仍会执行本地文本近重复检测。</p>
+        <form th:action="@{/admin/embedding-settings}" method="post" class="stack-form" id="embedding-form">
+            <label for="embedding-mode">接入方式
+                <select id="embedding-mode" name="mode">
+                    <option value="disabled" th:selected="${embedding.mode == 'disabled'}">关闭语义检测</option>
+                    <option value="reuse" th:selected="${embedding.mode == 'reuse'}">复用当前 AI 接口</option>
+                    <option value="external" th:selected="${embedding.mode == 'external'}">外部 OpenAI-compatible Embedding 接口</option>
+                </select>
+            </label>
+            <fieldset id="embedding-fields" class="stack-form">
+                <legend>Embedding 接口</legend>
+                <div id="embedding-external-fields" class="stack-form">
+                    <label>接口根地址<input id="embedding-base" name="baseUrl" type="url" maxlength="1000" th:value="${embedding.baseUrl}"></label>
+                    <label>API Key<input id="embedding-key" name="apiKey" type="password" autocomplete="new-password" maxlength="4096"></label>
+                    <small th:text="${embedding.hasKey ? '密钥已保存，留空保留；更换地址时必须重新填写。' : '尚未保存外部 Embedding 密钥。'}"></small>
+                    <label class="checkbox"><input name="clearKey" type="checkbox">清除 Embedding 密钥并关闭语义检测</label>
+                </div>
+                <label>调用路径<input name="embeddingsPath" maxlength="200" th:value="${embedding.embeddingsPath}"></label>
+                <label>Embedding 模型名称<input name="model" maxlength="200" th:value="${embedding.model}"></label>
+                <label>请求超时（秒）<input name="timeoutSeconds" type="number" min="1" max="300" th:value="${embedding.timeoutSeconds}"></label>
+            </fieldset>
+            <button class="primary" type="submit">保存语义检测设置</button>
+        </form>
+        <form th:if="${embedding.mode != 'disabled'}" th:action="@{/admin/similarity/index}" method="post">
+            <button type="submit">更新已发布文章语义索引（每次最多 50 篇）</button>
+        </form>
+    </section>
 </main>
 <script th:inline="javascript">
     const profiles = /*[[${ai}]]*/ {};
@@ -55,6 +84,19 @@
     }
     mode.addEventListener('change', selectMode);
     selectMode();
+
+    const embeddingMode = document.getElementById('embedding-mode');
+    function selectEmbeddingMode() {
+        const disabled = embeddingMode.value === 'disabled';
+        const fields = document.getElementById('embedding-fields');
+        fields.hidden = disabled;
+        fields.disabled = disabled;
+        document.getElementById('embedding-external-fields').hidden = embeddingMode.value !== 'external';
+        document.getElementById('embedding-base').disabled = embeddingMode.value !== 'external';
+        document.getElementById('embedding-key').disabled = embeddingMode.value !== 'external';
+    }
+    embeddingMode.addEventListener('change', selectEmbeddingMode);
+    selectEmbeddingMode();
 </script>
 </body>
 </html>

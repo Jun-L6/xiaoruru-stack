@@ -107,10 +107,35 @@ class AiSettingsIntegrationTest {
         settings.save(cpa("never-render-this-key"));
         String html = mvc.perform(get("/admin/ai-settings").with(user("admin")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        assertThat(html).contains("AI 设置", "ai-mode").doesNotContain("never-render-this-key", "encryptedKey");
+        assertThat(html).contains("AI 设置", "ai-mode", "语义相似检测", "embedding-mode")
+                .doesNotContain("never-render-this-key", "encryptedKey");
         mvc.perform(post("/admin/ai-settings").with(user("admin")).with(csrf()).param("mode", "none"))
                 .andExpect(status().is3xxRedirection());
         assertThat(settings.enabled()).isFalse();
+    }
+
+    @Test void embeddingCanReuseAiOrUseExternalEndpointWithoutAddingAService() {
+        settings.save(new AiSettingsService.Form("external", "https://chat.example", "chat-secret", "chat-model",
+                "/v1/chat/completions", 10, null, false));
+        settings.saveEmbedding(new AiSettingsService.EmbeddingForm("reuse", "", "", "embed-model",
+                "/v1/embeddings", 12, false));
+        assertThat(settings.embeddingConnection().endpoint().toString())
+                .isEqualTo("https://chat.example/v1/embeddings");
+        assertThat(settings.embeddingConnection().apiKey()).isEqualTo("chat-secret");
+
+        settings.saveEmbedding(new AiSettingsService.EmbeddingForm("external", "https://embed.example",
+                "embedding-secret", "embed-external", "/embeddings", 20, false));
+        assertThat(settings.embeddingConnection().endpoint().toString())
+                .isEqualTo("https://embed.example/embeddings");
+        assertThat(settings.embeddingConnection().apiKey()).isEqualTo("embedding-secret");
+        assertThat(repository.findById(1L).orElseThrow().getDocument())
+                .doesNotContain("chat-secret", "embedding-secret");
+        assertThat(mapper.writeValueAsString(settings.embeddingView()))
+                .doesNotContain("embedding-secret", "encryptedKey");
+
+        settings.saveEmbedding(new AiSettingsService.EmbeddingForm("disabled", "", "", "", "", 0, false));
+        assertThat(settings.embeddingEnabled()).isFalse();
+        assertThatThrownBy(settings::embeddingConnection).hasMessageContaining("尚未启用");
     }
 
     @Test void upstreamErrorsAreVisibleWithoutReflectingSecretResponseBodies() throws Exception {

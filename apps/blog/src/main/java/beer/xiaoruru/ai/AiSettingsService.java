@@ -44,7 +44,9 @@ public class AiSettingsService {
 
     public record Profile(String baseUrl, String encryptedKey, String model, String completionsPath,
                           int timeoutSeconds, Double temperature) {}
-    public record Document(String mode, Profile cpa, Profile external) {}
+    public record EmbeddingProfile(String mode, String baseUrl, String encryptedKey, String model,
+                                   String embeddingsPath, int timeoutSeconds) {}
+    public record Document(String mode, Profile cpa, Profile external, EmbeddingProfile embedding) {}
     public record Selection(boolean enabled, Profile profile, String apiKeyOverride) {
         @Override public String toString() { return "AiSelection[credentials=REDACTED]"; }
     }
@@ -52,17 +54,38 @@ public class AiSettingsService {
                        int timeoutSeconds, Double temperature, boolean clearKey) {
         @Override public String toString() { return "AiSettingsForm[REDACTED]"; }
     }
+    public record EmbeddingForm(String mode, String baseUrl, String apiKey, String model,
+                                String embeddingsPath, int timeoutSeconds, boolean clearKey) {
+        @Override public String toString() { return "EmbeddingSettingsForm[REDACTED]"; }
+    }
     public record Connection(URI endpoint, String apiKey, String model, Duration timeout, Double temperature) {
         @Override public String toString() { return "AiConnection[REDACTED]"; }
+    }
+    public record EmbeddingConnection(URI endpoint, String apiKey, String model, Duration timeout) {
+        @Override public String toString() { return "EmbeddingConnection[REDACTED]"; }
     }
 
     private Profile defaults(String url) {
         return new Profile(url, "", "", "/v1/chat/completions", 45, null);
     }
 
+    private EmbeddingProfile embeddingDefaults() {
+        return new EmbeddingProfile("disabled", "https://api.example.com", "", "", "/v1/embeddings", 45);
+    }
+
     private Document document() {
-        return repository.findById(1L).map(row -> mapper.readValue(row.getDocument(), Document.class))
-                .orElseGet(() -> new Document("none", defaults(CPA_URL), defaults("https://api.example.com")));
+        return repository.findById(1L).map(row -> normalize(mapper.readValue(row.getDocument(), Document.class)))
+                .orElseGet(() -> new Document("none", defaults(CPA_URL), defaults("https://api.example.com"),
+                        embeddingDefaults()));
+    }
+
+    private Document normalize(Document doc) {
+        if (doc == null) return new Document("none", defaults(CPA_URL), defaults("https://api.example.com"),
+                embeddingDefaults());
+        return new Document(doc.mode() == null ? "none" : doc.mode(),
+                doc.cpa() == null ? defaults(CPA_URL) : doc.cpa(),
+                doc.external() == null ? defaults("https://api.example.com") : doc.external(),
+                doc.embedding() == null ? embeddingDefaults() : doc.embedding());
     }
 
     public boolean enabled() { return selection().enabled(); }
@@ -77,7 +100,7 @@ public class AiSettingsService {
         // 一旦后台产生持久化设置，它就是运行时唯一数据源。
         var persisted = repository.findById(1L);
         if (persisted.isPresent()) {
-            Document doc = mapper.readValue(persisted.orElseThrow().getDocument(), Document.class);
+            Document doc = normalize(mapper.readValue(persisted.orElseThrow().getDocument(), Document.class));
             return new Selection(!doc.mode().equals("none"), selected(doc), "");
         }
         if (yaml.enabled()) {
@@ -94,6 +117,17 @@ public class AiSettingsService {
         }
         Document doc = document();
         return Map.of("mode", doc.mode(), "cpa", publicProfile(doc.cpa()), "external", publicProfile(doc.external()));
+    }
+
+    public Map<String, Object> embeddingView() {
+        EmbeddingProfile profile = document().embedding();
+        return Map.of("mode", profile.mode(), "baseUrl", profile.baseUrl(),
+                "hasKey", !profile.encryptedKey().isBlank(), "model", profile.model(),
+                "embeddingsPath", profile.embeddingsPath(), "timeoutSeconds", profile.timeoutSeconds());
+    }
+
+    public boolean embeddingEnabled() {
+        return !"disabled".equals(document().embedding().mode());
     }
 
     private Map<String, Object> publicProfile(Profile profile) {
@@ -123,9 +157,10 @@ public class AiSettingsService {
             Profile cleared = new Profile(previous.baseUrl(), "", previous.model(),
                     previous.completionsPath(), previous.timeoutSeconds(), previous.temperature());
             next = form.mode().equals("cpa")
-                    ? new Document("none", cleared, old.external()) : new Document("none", old.cpa(), cleared);
+                    ? new Document("none", cleared, old.external(), old.embedding())
+                    : new Document("none", old.cpa(), cleared, old.embedding());
         } else if (form.mode().equals("none")) {
-            next = new Document("none", old.cpa(), old.external());
+            next = new Document("none", old.cpa(), old.external(), old.embedding());
         } else {
             Profile previous = form.mode().equals("cpa") ? old.cpa() : old.external();
             String base = form.mode().equals("cpa") ? CPA_URL : value(form.baseUrl()).replaceAll("/+$", "");
@@ -165,11 +200,73 @@ public class AiSettingsService {
             if (key.isBlank()) throw new IllegalArgumentException("启用 AI 时必须填写 API Key；更换地址后请重新填写。");
             Profile profile = new Profile(base, key, model, path, form.timeoutSeconds(), form.temperature());
             next = form.mode().equals("cpa")
-                    ? new Document("cpa", profile, old.external()) : new Document("external", old.cpa(), profile);
+                    ? new Document("cpa", profile, old.external(), old.embedding())
+                    : new Document("external", old.cpa(), profile, old.embedding());
         }
         AiSettings row = repository.findById(1L).orElseGet(() -> new AiSettings(""));
         row.setDocument(mapper.writeValueAsString(next));
         repository.saveAndFlush(row);
+    }
+
+    public synchronized void saveEmbedding(EmbeddingForm form) {
+        transactions.executeWithoutResult(status -> {
+            if (form.mode() == null || !java.util.Set.of("disabled", "reuse", "external").contains(form.mode())) {
+                throw new IllegalArgumentException("请选择关闭、复用当前 AI 接口或外部 Embedding 接口。");
+            }
+            Document old = document();
+            EmbeddingProfile previous = old.embedding();
+            if ("disabled".equals(form.mode()) || form.clearKey()) {
+                EmbeddingProfile disabled = new EmbeddingProfile("disabled", previous.baseUrl(),
+                        form.clearKey() ? "" : previous.encryptedKey(), previous.model(),
+                        previous.embeddingsPath(), previous.timeoutSeconds());
+                saveDocument(new Document(old.mode(), old.cpa(), old.external(), disabled));
+                return;
+            }
+            String base = "reuse".equals(form.mode()) ? previous.baseUrl() : value(form.baseUrl()).replaceAll("/+$", "");
+            String path = value(form.embeddingsPath());
+            String model = value(form.model());
+            validateEndpoint("reuse".equals(form.mode()) ? "https://api.example.com" : base, path, "/embeddings");
+            if (model.isBlank() || model.length() > 200 || model.chars().anyMatch(Character::isISOControl)) {
+                throw new IllegalArgumentException("请填写 Embedding 模型名称（最多 200 字符）。");
+            }
+            if (form.timeoutSeconds() < 1 || form.timeoutSeconds() > 300) {
+                throw new IllegalArgumentException("Embedding 超时范围为 1 至 300 秒。");
+            }
+            String encrypted = previous.encryptedKey();
+            if ("external".equals(form.mode())) {
+                String supplied = value(form.apiKey());
+                if (supplied.length() > 4096 || supplied.chars().anyMatch(ch -> ch < 33 || ch > 126)) {
+                    throw new IllegalArgumentException("Embedding API Key 格式不正确。");
+                }
+                if (!base.equals(previous.baseUrl())) encrypted = "";
+                if (!supplied.isBlank()) encrypted = encrypt(supplied);
+                if (encrypted.isBlank()) throw new IllegalArgumentException("外部 Embedding 接口必须填写 API Key。");
+            }
+            EmbeddingProfile next = new EmbeddingProfile(form.mode(), base, encrypted, model, path,
+                    form.timeoutSeconds());
+            saveDocument(new Document(old.mode(), old.cpa(), old.external(), next));
+        });
+    }
+
+    private void saveDocument(Document document) {
+        AiSettings row = repository.findById(1L).orElseGet(() -> new AiSettings(""));
+        row.setDocument(mapper.writeValueAsString(document));
+        repository.saveAndFlush(row);
+    }
+
+    private void validateEndpoint(String base, String path, String requiredSuffix) {
+        URI uri;
+        try { uri = URI.create(base); }
+        catch (IllegalArgumentException exception) { throw new IllegalArgumentException("接口地址格式不正确。"); }
+        if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                || uri.getHost() == null || uri.getUserInfo() != null || uri.getQuery() != null
+                || uri.getFragment() != null || uri.getPort() == 0 || uri.getPort() > 65535 || base.length() > 1000) {
+            throw new IllegalArgumentException("接口地址必须是 HTTP(S) URL，不得包含账号、查询参数或片段。");
+        }
+        if (!path.matches("/[a-zA-Z0-9/_-]+") || path.contains("//") || path.length() > 200
+                || !path.endsWith(requiredSuffix)) {
+            throw new IllegalArgumentException("调用路径必须以 " + requiredSuffix + " 结尾。");
+        }
     }
 
     public Connection connection() {
@@ -189,6 +286,31 @@ public class AiSettingsService {
         return new Connection(URI.create(profile.baseUrl() + profile.completionsPath()),
                 apiKey, profile.model(),
                 Duration.ofSeconds(profile.timeoutSeconds()), profile.temperature());
+    }
+
+    public EmbeddingConnection embeddingConnection() {
+        Document doc = document();
+        EmbeddingProfile embedding = doc.embedding();
+        if ("disabled".equals(embedding.mode())) {
+            throw new IllegalStateException("语义相似检测尚未启用。");
+        }
+        String base;
+        String apiKey;
+        if ("reuse".equals(embedding.mode())) {
+            Selection selection = selection();
+            if (!selection.enabled()) throw new IllegalStateException("当前 AI 接口已关闭，无法复用它调用 Embedding。");
+            base = selection.profile().baseUrl();
+            apiKey = value(selection.apiKeyOverride());
+            if (apiKey.isBlank()) apiKey = decrypt(selection.profile().encryptedKey());
+        } else {
+            base = embedding.baseUrl();
+            apiKey = decrypt(embedding.encryptedKey());
+        }
+        if (apiKey.isBlank() || embedding.model().isBlank()) {
+            throw new IllegalStateException("Embedding 配置缺少 API Key 或模型名称。");
+        }
+        return new EmbeddingConnection(URI.create(base.replaceAll("/+$", "") + embedding.embeddingsPath()),
+                apiKey, embedding.model(), Duration.ofSeconds(embedding.timeoutSeconds()));
     }
 
     private Profile yamlProfile() {

@@ -48,6 +48,10 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
             + "and a.kind = beer.xiaoruru.article.ArticleKind.POST order by a.publishedAt desc")
     List<Article> findAllPublishedForArchive();
 
+    @Query("select a from Article a where a.status = beer.xiaoruru.article.ArticleStatus.PUBLISHED "
+            + "and a.kind = beer.xiaoruru.article.ArticleKind.POST order by a.id")
+    List<Article> findAllPublishedForSimilarity();
+
     @EntityGraph(attributePaths = {"category", "category.parent", "tags"})
     @Query("select distinct a from Article a order by a.updatedAt desc")
     List<Article> findAllForAdmin();

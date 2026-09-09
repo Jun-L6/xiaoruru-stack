@@ -226,3 +226,5 @@
   .login-card { padding: 28px; border-radius: 16px; }
   .login-card h2 { font-size: 22px; }
 }
+.conversation-preview { margin: 18px 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.conversation-preview pre { margin: 8px 0 0; max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: var(--muted); }

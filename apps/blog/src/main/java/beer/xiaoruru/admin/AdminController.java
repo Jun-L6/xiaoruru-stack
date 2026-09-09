@@ -17,6 +17,7 @@ import beer.xiaoruru.setting.SiteSettingsService;
 import beer.xiaoruru.taxonomy.CategoryRepository;
 import beer.xiaoruru.taxonomy.TagRepository;
 import beer.xiaoruru.taxonomy.TaxonomyService;
+import beer.xiaoruru.similarity.ArticleSimilarityService;
 import jakarta.validation.Valid;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -50,11 +51,13 @@ public class AdminController {
     private final SiteSettingsService settings;
     private final BlogProperties properties;
     private final beer.xiaoruru.ai.AiSettingsService aiSettings;
+    private final ArticleSimilarityService similarity;
 
     public AdminController(ArticleRepository articles, ArticleService articleService,
             CategoryRepository categories, TagRepository tags, TaxonomyService taxonomy,
             AiJobRepository aiJobs, AiJobService aiJobService, BackupRecordRepository backups,
-            SiteSettingsService settings, BlogProperties properties, beer.xiaoruru.ai.AiSettingsService aiSettings) {
+            SiteSettingsService settings, BlogProperties properties, beer.xiaoruru.ai.AiSettingsService aiSettings,
+            ArticleSimilarityService similarity) {
         this.articles = articles;
         this.articleService = articleService;
         this.categories = categories;
@@ -66,6 +69,7 @@ public class AdminController {
         this.settings = settings;
         this.properties = properties;
         this.aiSettings = aiSettings;
+        this.similarity = similarity;
     }
 
     @GetMapping("/admin/login")
@@ -137,7 +141,13 @@ public class AdminController {
         for (Long id : ids.stream().distinct().limit(100).toList()) {
             try {
                 switch (action) {
-                    case "publish" -> articleService.publish(id);
+                    case "publish" -> {
+                        var result = similarity.check(id);
+                        if (result.getRisk().isConfirmationRequired()) {
+                            throw new IllegalStateException("文章疑似与已发布内容重复");
+                        }
+                        articleService.publish(id);
+                    }
                     case "withdraw" -> articleService.withdraw(id);
                     case "trash" -> articleService.trash(id);
                     case "classify" -> aiJobService.requestNow(id);
@@ -189,9 +199,20 @@ public class AdminController {
     }
 
     @PostMapping("/admin/articles/{id}/publish")
-    public String publish(@PathVariable Long id, RedirectAttributes redirect) {
-        articleService.publish(id);
-        redirect.addFlashAttribute("message", "文章已发布");
+    public String publish(@PathVariable Long id,
+            @RequestParam(defaultValue = "false") boolean similarityConfirmed,
+            RedirectAttributes redirect) {
+        try {
+            var result = similarity.check(id);
+            if (result.getRisk().isConfirmationRequired() && !similarityConfirmed) {
+                redirect.addFlashAttribute("error", "检测到疑似重复内容，请查看相似结果后确认是否仍然发布。");
+                return "redirect:/admin/articles/" + id;
+            }
+            articleService.publish(id);
+            redirect.addFlashAttribute("message", "文章已发布");
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            redirect.addFlashAttribute("error", exception.getMessage());
+        }
         return "redirect:/admin/articles/" + id;
     }
 
@@ -354,6 +375,7 @@ public class AdminController {
         model.addAttribute("leafCategories", categories.findEnabledLeaves());
         model.addAttribute("contentTypes", ContentType.values());
         model.addAttribute("contentForms", ContentForm.values());
+        model.addAttribute("similarityResult", article == null ? null : similarity.latest(article.getId()).orElse(null));
     }
 
     private long dataUsage() {

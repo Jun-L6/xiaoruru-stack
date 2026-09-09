@@ -40,6 +40,16 @@ public class TaxonomyService {
         return category;
     }
 
+    @Transactional(readOnly = true)
+    public Category requireLeafBySlug(String slug) {
+        Category category = categories.findBySlug(slug == null ? "" : slug.strip())
+                .orElseGet(() -> categories.findBySlug("uncategorized").orElseThrow());
+        if (!category.isEnabled() || categories.existsByParentId(category.getId())) {
+            return categories.findBySlug("uncategorized").orElseThrow();
+        }
+        return category;
+    }
+
     @Transactional
     public Set<Tag> resolveTags(String commaSeparated, String createdBy) {
         if (commaSeparated == null || commaSeparated.isBlank()) {

@@ -26,7 +26,7 @@ LABEL org.opencontainers.image.title="rurublog" \
 # Low-memory deployment: build the JAR locally, then choose --target prebuilt.
 FROM runtime-base AS prebuilt
 COPY --chmod=644 target/rurublog.jar /app/rurublog.jar
-RUN java -Djarmode=tools -jar /app/rurublog.jar list >/dev/null
+RUN java -Djarmode=tools -jar /app/rurublog.jar list-layers >/dev/null
 
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
@@ -43,4 +43,4 @@ RUN --mount=type=cache,target=/root/.m2,sharing=locked \
 
 FROM runtime-base AS runtime
 COPY --from=build --chmod=644 /build/target/rurublog.jar /app/rurublog.jar
-RUN java -Djarmode=tools -jar /app/rurublog.jar list >/dev/null
+RUN java -Djarmode=tools -jar /app/rurublog.jar list-layers >/dev/null

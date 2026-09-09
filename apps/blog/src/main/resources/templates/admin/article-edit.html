@@ -63,12 +63,27 @@
                     <p th:if="${article.classificationConfidence != null}" th:text="'置信度：' + ${#numbers.formatDecimal(article.classificationConfidence, 1, 2)}"></p>
                     <p th:if="${article.classificationReason}" th:text="${article.classificationReason}"></p>
                 </div>
+                <div class="ai-result" th:if="${article != null}">
+                    <strong>相似内容检测</strong>
+                    <span class="status" th:if="${similarityResult != null}" th:text="${similarityResult.risk.label}">结果</span>
+                    <p th:if="${similarityResult == null}">尚未检测；发布前会自动检查。</p>
+                    <p th:if="${similarityResult != null && !similarityResult.current}">正文已变化，当前结果已过期。</p>
+                    <th:block th:if="${similarityResult != null && similarityResult.current}">
+                        <p th:if="${similarityResult.matchedArticle != null}">最相似：<a th:href="@{/admin/articles/{id}(id=${similarityResult.matchedArticle.id})}" th:text="${similarityResult.matchedArticle.title}">文章</a></p>
+                        <p th:text="${'文本 ' + #numbers.formatPercent(similarityResult.lexicalScore, 1, 0) + ' · 段落覆盖 ' + #numbers.formatPercent(similarityResult.paragraphCoverage, 1, 0)}"></p>
+                        <p th:if="${similarityResult.semanticScore != null}" th:text="${'语义 ' + #numbers.formatPercent(similarityResult.semanticScore, 1, 0) + ' · 语义覆盖 ' + #numbers.formatPercent(similarityResult.semanticCoverage, 1, 0)}"></p>
+                        <p th:if="${similarityResult.embeddingCandidates > 0}" th:text="${'语义索引覆盖 ' + similarityResult.embeddingCompared + ' / ' + similarityResult.embeddingCandidates}"></p>
+                        <p th:if="${!#strings.isEmpty(similarityResult.matchedExcerpt)}" th:text="${'相似片段：' + similarityResult.matchedExcerpt}"></p>
+                    </th:block>
+                </div>
             </aside>
         </div>
     </form>
     <div class="editor-actions" th:if="${article != null}">
         <form th:action="@{/admin/articles/{id}/classify(id=${article.id})}" method="post" onsubmit="return confirm('重新分类会解除人工分类锁，AI 结果可能覆盖当前分类、内容形态和标签。确认继续？')"><button type="submit">重新 AI 分类</button></form>
-        <form th:if="${article.status.name() != 'PUBLISHED'}" th:action="@{/admin/articles/{id}/publish(id=${article.id})}" method="post"><button class="primary" type="submit">发布文章</button></form>
+        <form th:action="@{/admin/articles/{id}/similarity(id=${article.id})}" method="post"><button type="submit">检查相似内容</button></form>
+        <form th:if="${article.status.name() != 'PUBLISHED' && (similarityResult == null || !similarityResult.current || !similarityResult.risk.confirmationRequired)}" th:action="@{/admin/articles/{id}/publish(id=${article.id})}" method="post"><button class="primary" type="submit">发布文章</button></form>
+        <form th:if="${article.status.name() != 'PUBLISHED' && similarityResult != null && similarityResult.current && similarityResult.risk.confirmationRequired}" th:action="@{/admin/articles/{id}/publish(id=${article.id})}" method="post" onsubmit="return confirm('这篇文章疑似与已发布内容重复。确认仍然发布吗？')"><input type="hidden" name="similarityConfirmed" value="true"><button class="danger" type="submit">确认仍然发布</button></form>
         <form th:if="${article.status.name() == 'PUBLISHED'}" th:action="@{/admin/articles/{id}/withdraw(id=${article.id})}" method="post"><button type="submit">撤回为草稿</button></form>
         <form th:if="${article.status.name() != 'TRASHED'}" th:action="@{/admin/articles/{id}/trash(id=${article.id})}" method="post" onsubmit="return confirm('确定移入回收站吗？')"><button class="danger" type="submit">移入回收站</button></form>
         <form th:if="${article.status.name() == 'TRASHED'}" th:action="@{/admin/articles/{id}/restore(id=${article.id})}" method="post"><button type="submit">恢复为草稿</button></form>
