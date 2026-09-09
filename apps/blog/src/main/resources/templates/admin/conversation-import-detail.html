@@ -5,9 +5,9 @@
 <header th:replace="~{fragments/admin :: header}"></header>
 <main class="admin-shell narrow-admin">
     <div th:replace="~{fragments/admin :: flash}"></div>
-    <div class="admin-title"><div><p class="eyebrow">CONVERSATION IMPORT</p><h1 th:text="${#strings.isEmpty(job.sourceTitle) ? '未命名分享内容' : job.sourceTitle}">导入详情</h1><p><span th:text="${job.provider.label}">来源</span> · <span th:text="${job.questionAnswerCount + ' 组问答 / ' + job.messageCount + ' 条消息 / ' + job.characterCount + ' 字符'}"></span></p></div></div>
+    <div class="admin-title"><div><p class="eyebrow">CONVERSATION IMPORT</p><h1 th:text="${job.displayTitle}">导入详情</h1><p><span th:text="${job.provider.label}">来源</span> · <span th:text="${job.questionAnswerCount + ' 组问答 / ' + job.messageCount + ' 条消息 / ' + job.characterCount + ' 字符'}"></span></p></div></div>
     <section class="panel stack-form">
-        <div><strong>任务状态</strong> <span class="status" th:text="${job.status}">状态</span></div>
+        <div><strong>任务状态</strong> <span class="status" th:text="${job.status.label}">状态</span></div>
         <p th:if="${job.status.name() == 'PENDING'}">正在等待其他 AI 任务完成，本页会自动刷新。</p>
         <p th:if="${job.status.name() == 'RUNNING'}">正在整理全部问答并生成一篇文章，本页会自动刷新。</p>
         <p class="form-errors" th:if="${job.errorMessage}" th:text="${job.errorMessage}">错误</p>

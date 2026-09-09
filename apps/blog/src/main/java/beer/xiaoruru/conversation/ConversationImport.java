@@ -62,6 +62,10 @@ public class ConversationImport extends BaseEntity {
     public ConversationProvider getProvider() { return provider; }
     public String getSourceUrl() { return sourceUrl; }
     public String getSourceTitle() { return sourceTitle; }
+    public String getDisplayTitle() {
+        if (sourceTitle == null || sourceTitle.isBlank()) return "未命名分享内容";
+        return sourceTitle.equalsIgnoreCase("Shared Conversation") ? "分享对话" : sourceTitle;
+    }
     public String getSnapshot() { return snapshot; }
     public void setSnapshot(String snapshot) { this.snapshot = snapshot; }
     public int getMessageCount() { return messageCount; }

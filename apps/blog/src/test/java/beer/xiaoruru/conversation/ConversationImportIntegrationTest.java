@@ -74,7 +74,7 @@ class ConversationImportIntegrationTest {
 
     @Test
     void importWorkspaceRequiresLoginAndRendersTheExtractedPreview() throws Exception {
-        ConversationSnapshot snapshot = new ConversationSnapshot(ConversationProvider.CHATGPT, "预览标题", List.of(
+        ConversationSnapshot snapshot = new ConversationSnapshot(ConversationProvider.CHATGPT, "Shared Conversation", List.of(
                 new ConversationMessage(ConversationMessage.Role.USER, "预览问题"),
                 new ConversationMessage(ConversationMessage.Role.ASSISTANT, "预览回答")));
         ConversationImport job = imports.save(new ConversationImport("https://chatgpt.com/share/example-id",
@@ -83,6 +83,10 @@ class ConversationImportIntegrationTest {
         mvc.perform(get("/admin/conversation-imports")).andExpect(status().is3xxRedirection());
         mvc.perform(get("/admin/conversation-imports/" + job.getId()).with(user("admin")))
                 .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("分享对话")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("已提取")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("Shared Conversation"))))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("预览问题")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("预览回答")));
     }

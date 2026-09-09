@@ -12,6 +12,7 @@ public record ConversationSnapshot(
             throw new IllegalArgumentException("分享内容中没有可用的对话消息");
         }
         sourceTitle = sourceTitle == null ? "" : sourceTitle.strip();
+        if (sourceTitle.equalsIgnoreCase("Shared Conversation")) sourceTitle = "分享对话";
         if (sourceTitle.length() > 300) sourceTitle = sourceTitle.substring(0, 300);
         if (messages.stream().anyMatch(java.util.Objects::isNull)) {
             throw new IllegalArgumentException("分享内容中包含无效消息");
