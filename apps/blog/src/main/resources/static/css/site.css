@@ -144,7 +144,17 @@ button:hover, .button:hover { border-color: var(--accent); background: var(--acc
 .article-toc { margin: 0; padding: 18px 18px 16px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--bg) 88%, var(--paper)); font-size: 12px; overscroll-behavior: contain; }
 .article-toc strong { display: flex; align-items: center; gap: 16px; }
 .article-toc .eyebrow { margin: 0; font-size: 9px; color: var(--accent); }
+.article-toc-loading { display: none; gap: 8px; margin-top: 15px; }
+.article-toc-loading span { color: var(--muted); font-size: 10px; }
+.article-toc-loading i { display: block; height: 9px; border-radius: 4px; background: linear-gradient(90deg, var(--line) 24%, color-mix(in srgb, var(--line) 35%, transparent) 50%, var(--line) 76%); background-size: 220% 100%; animation: toc-loading 1.25s ease-in-out infinite; }
+.article-toc-loading i:nth-of-type(2) { width: 86%; }
+.article-toc-loading i:nth-of-type(3) { width: 72%; }
+.article-toc-loading i:nth-of-type(4) { width: 91%; }
+.article-toc[data-state="loading"] .article-toc-loading { display: grid; }
+.article-toc-empty { display: none; margin: 15px 0 2px; color: var(--muted); font-size: 11px; }
+.article-toc[data-state="empty"] .article-toc-empty { display: block; }
 .article-toc ol { list-style: none; margin: 13px 0 0; padding: 0; }
+.article-toc[data-state="loading"] ol, .article-toc[data-state="empty"] ol { display: none; }
 .article-toc li { border-left: 2px solid var(--line); break-inside: avoid; transition: border-color .18s, background .18s; }
 .article-toc a { display: block; padding: 6px 8px 6px 12px; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
 .article-toc a:hover { color: var(--accent); }
@@ -178,6 +188,7 @@ button:hover, .button:hover { border-color: var(--accent); background: var(--acc
 .article-content hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
 .mermaid { margin: 28px 0; padding: 22px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); overflow-x: auto; text-align: center; }
 .mermaid svg { max-width: 100%; height: auto; }
+.mermaid-load-error { color: var(--muted); white-space: pre-wrap; text-align: left; }
 .plain-text { white-space: pre-wrap; font-family: var(--mono); }
 .article-shell.form-essay .article-content { font-family: ui-serif, "Songti SC", "STSong", serif; font-size: calc(var(--article-font-size) + 1px); }
 .article-shell.form-note { background-image: linear-gradient(to bottom, transparent 35px, color-mix(in srgb, var(--line) 42%, transparent) 36px); background-size: 100% 36px; }
@@ -227,9 +238,9 @@ input:focus, textarea:focus, select:focus, button:focus-visible, a:focus-visible
 .error-page h1 { margin: 10px 0; font-size: clamp(30px, 6vw, 50px); letter-spacing: -1px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @media (min-width: 1051px) {
-  .article-shell:has(.article-toc:not([hidden])) { width: min(calc(var(--article-width) + 396px), calc(100% - 64px)); padding-inline: 54px; }
-  .article-layout:has(.article-toc:not([hidden])) { display: grid; grid-template-columns: minmax(0, var(--article-width)) minmax(210px, 240px); align-items: start; gap: 48px; }
-  .article-layout:has(.article-toc:not([hidden])) > article { margin: 0 auto; }
+  .article-shell:has(.article-toc-rail) { width: min(calc(var(--article-width) + 396px), calc(100% - 64px)); padding-inline: 54px; }
+  .article-layout:has(.article-toc-rail) { display: grid; grid-template-columns: minmax(0, var(--article-width)) minmax(210px, 240px); align-items: start; gap: 48px; }
+  .article-layout:has(.article-toc-rail) > article { margin: 0 auto; }
   .article-toc-rail { position: sticky; top: 104px; max-height: calc(100vh - 128px); }
   .article-toc { max-height: calc(100vh - 128px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 }
@@ -241,6 +252,7 @@ input:focus, textarea:focus, select:focus, button:focus-visible, a:focus-visible
   .article-toc { position: absolute; right: 0; bottom: calc(100% + 10px); width: min(330px, calc(100vw - 32px)); max-height: min(62vh, 520px); overflow-y: auto; box-shadow: 0 18px 48px color-mix(in srgb, var(--text) 18%, transparent); transform-origin: bottom right; transition: opacity .18s, transform .18s, visibility .18s; }
   .article-toc-rail:not(.is-open) .article-toc { visibility: hidden; opacity: 0; transform: translateY(8px) scale(.98); pointer-events: none; }
 }
+@keyframes toc-loading { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (max-width: 900px) {
   .nav-shell, .page-shell, .site-footer { width: calc(100% - 40px); }
   .intro { grid-template-columns: 1.15fr 1fr; gap: 0; }

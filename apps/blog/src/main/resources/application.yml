@@ -6,7 +6,7 @@ spring:
     username: blog
     password: ${BLOG_DB_PASSWORD:}
     hikari:
-      maximum-pool-size: 8
+      maximum-pool-size: 3
       minimum-idle: 1
   jpa:
     open-in-view: false
@@ -37,15 +37,6 @@ server:
   error:
     include-message: never
     include-stacktrace: never
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health
-  endpoint:
-    health:
-      show-details: never
 
 blog:
   data-dir: ${BLOG_DATA_DIR:./data}

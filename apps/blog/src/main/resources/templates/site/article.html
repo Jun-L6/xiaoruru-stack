@@ -33,20 +33,22 @@
         </nav>
       </article>
       <aside class="article-toc-rail" th:if="${!article.contentForm.compact && site['site.toc-mode'] != 'hidden'}" data-article-toc-rail>
-          <button class="article-toc-toggle" type="button" data-article-toc-toggle aria-controls="article-toc" aria-expanded="false" hidden>
-              <span>本文目录</span><span aria-hidden="true">⌃</span>
+          <button class="article-toc-toggle" type="button" data-article-toc-toggle aria-controls="article-toc" aria-expanded="false" disabled>
+              <span data-article-toc-toggle-label>目录加载中…</span><span aria-hidden="true">⌃</span>
           </button>
-          <nav id="article-toc" class="article-toc" data-article-toc hidden aria-label="文章目录">
-              <strong><span class="eyebrow">ON THIS PAGE</span> 本文目录</strong><ol></ol>
+          <nav id="article-toc" class="article-toc" data-article-toc data-state="loading" aria-busy="true" aria-label="文章目录">
+              <strong><span class="eyebrow">ON THIS PAGE</span> 本文目录</strong>
+              <div class="article-toc-loading" role="status"><span>正在整理目录…</span><i></i><i></i><i></i><i></i></div>
+              <p class="article-toc-empty">正文没有分节标题</p>
+              <ol></ol>
           </nav>
       </aside>
     </div>
 </main>
 <footer th:replace="~{fragments/site :: footer}"></footer>
-<script th:src="@{/webjars/highlightjs__cdn-assets/11.11.1/highlight.min.js}"></script>
-<script th:src="@{/webjars/katex/0.16.44/dist/katex.min.js}"></script>
-<script th:src="@{/webjars/katex/0.16.44/dist/contrib/auto-render.min.js}"></script>
-<script th:src="@{/webjars/mermaid/11.17.1/dist/mermaid.min.js}"></script>
-<script th:src="@{/js/article.js}"></script>
+<script defer th:src="@{/js/article.js}" th:attr="data-mermaid-src=@{/webjars/mermaid/11.17.1/dist/mermaid.min.js}"></script>
+<script defer th:src="@{/webjars/highlightjs__cdn-assets/11.11.1/highlight.min.js}"></script>
+<script defer th:src="@{/webjars/katex/0.16.44/dist/katex.min.js}"></script>
+<script defer th:src="@{/webjars/katex/0.16.44/dist/contrib/auto-render.min.js}"></script>
 </body>
 </html>

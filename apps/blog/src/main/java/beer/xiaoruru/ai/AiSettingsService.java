@@ -178,7 +178,7 @@ public class AiSettingsService {
                 throw new IllegalArgumentException("调用路径格式不正确，例如 /v1/chat/completions。");
             }
             if (!path.endsWith("/chat/completions")) {
-                throw new IllegalArgumentException("Spring AI 调用路径必须以 /chat/completions 结尾。");
+                throw new IllegalArgumentException("AI 调用路径必须以 /chat/completions 结尾。");
             }
             if (model.isBlank() || model.length() > 200 || model.chars().anyMatch(Character::isISOControl)) {
                 throw new IllegalArgumentException("请填写模型名称（最多 200 字符）。");

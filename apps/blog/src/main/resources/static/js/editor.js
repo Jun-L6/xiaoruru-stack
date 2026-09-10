@@ -152,8 +152,8 @@
     const hint = document.querySelector('[data-content-form-hint]');
     if (hint) {
       hint.textContent = automatic
-        ? 'AI 会同时判断内容形态、分类和标签，不会锁定结果'
-        : '手动选择后会锁定当前分类结果；切回自动可重新交给 AI';
+        ? 'AI 会同时判断形态、分类和标签，不锁定结果'
+        : '手动选择会锁定分类；切回自动可交给 AI';
     }
     if (classificationLock) {
       // 手动形态必然锁定，不让表单再提交互相矛盾的组合。

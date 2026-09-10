@@ -4,7 +4,7 @@
 
 | 组件 | 当前版本 | 许可证 | 用途 |
 | --- | --- | --- | --- |
-| Spring Boot | 4.1.1 | Apache License 2.0 | Web、MVC、JPA、安全、监控与应用生命周期 |
+| Spring Boot | 4.1.1 | Apache License 2.0 | Web、MVC、JPA、安全与应用生命周期 |
 | H2 Database | 2.x（由 Spring Boot 管理） | MPL 2.0 / EPL 1.0 | 嵌入式文件数据库 |
 | Flyway Community | 由 Spring Boot 管理 | Apache License 2.0 | 数据库版本迁移 |
 | flexmark-java | 0.64.8 | BSD 2-Clause | Markdown 解析与扩展语法 |

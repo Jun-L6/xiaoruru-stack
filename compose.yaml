@@ -106,9 +106,9 @@ services:
       BLOG_DATA_DIR: /data
       BLOG_PUBLIC_URL: https://${BLOG_DOMAIN}
       BLOG_COOKIE_SECURE: "true"
-      SERVER_TOMCAT_THREADS_MAX: "32"
-      SERVER_TOMCAT_THREADS_MIN_SPARE: "4"
-      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
+      SERVER_TOMCAT_THREADS_MAX: "16"
+      SERVER_TOMCAT_THREADS_MIN_SPARE: "2"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
       SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
     volumes:
       - type: bind
@@ -125,8 +125,8 @@ services:
     tmpfs: ["/tmp:size=64m,mode=1777"]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    mem_limit: 768m
-    mem_reservation: 256m
+    mem_limit: 512m
+    mem_reservation: 192m
     cpus: "1.0"
     pids_limit: 128
     stop_grace_period: 30s

@@ -13,7 +13,7 @@ COPY --chmod=755 container/entrypoint.sh container/healthcheck.sh /app/
 ENV BLOG_DATA_DIR=/data \
     SERVER_PORT=8080 \
     TZ=Asia/Shanghai \
-    JAVA_TOOL_OPTIONS="-Xms64m -Xmx320m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=64m -Xss512k -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:+ExitOnOutOfMemoryError"
+    JAVA_TOOL_OPTIONS="-Xms48m -Xmx224m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m -XX:MaxDirectMemorySize=32m -Xss512k -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -XX:TieredStopAtLevel=1 -XX:+ExitOnOutOfMemoryError"
 USER 10001:10001
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \

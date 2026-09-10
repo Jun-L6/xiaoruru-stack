@@ -1,11 +1,50 @@
 (() => {
+  const articleScript = document.currentScript;
+  const mermaidSource = articleScript?.dataset.mermaidSrc || '';
   const diagramSources = new WeakMap();
   let diagramQueue = Promise.resolve();
+  let mermaidLoader;
+
+  function loadMermaid() {
+    if (window.mermaid) return Promise.resolve(window.mermaid);
+    if (mermaidLoader) return mermaidLoader;
+    if (!mermaidSource) return Promise.reject(new Error('Mermaid resource is not configured'));
+
+    mermaidLoader = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = mermaidSource;
+      script.async = true;
+      script.dataset.rurublogMermaid = 'true';
+      script.addEventListener('load', () => {
+        if (window.mermaid) resolve(window.mermaid);
+        else reject(new Error('Mermaid did not initialize'));
+      }, { once: true });
+      script.addEventListener('error', () => reject(new Error('Mermaid failed to load')), { once: true });
+      document.head.append(script);
+    }).catch((error) => {
+      mermaidLoader = undefined;
+      throw error;
+    });
+    return mermaidLoader;
+  }
+
   function renderDiagrams(root = document) {
     diagramQueue = diagramQueue.catch(() => {}).then(async () => {
-      if (!window.mermaid) return;
       const nodes = [...root.querySelectorAll('.mermaid')].filter(node => node.isConnected && diagramSources.has(node));
       if (!nodes.length) return;
+      try {
+        await loadMermaid();
+        nodes.forEach(node => {
+          node.classList.remove('mermaid-load-error');
+          node.removeAttribute('role');
+        });
+      } catch (_) {
+        nodes.forEach(node => {
+          node.classList.add('mermaid-load-error');
+          node.setAttribute('role', 'alert');
+        });
+        return;
+      }
       for (const node of nodes) {
         node.removeAttribute('data-processed');
         node.textContent = diagramSources.get(node);
@@ -27,7 +66,9 @@
       } catch (_) { /* Keep Mermaid's syntax error visible. */ }
     });
   }
-  document.addEventListener('rurublog:theme', () => renderDiagrams());
+  document.addEventListener('rurublog:theme', () => {
+    if (window.mermaid) renderDiagrams();
+  });
   function enhance(root = document) {
     root.querySelectorAll('a[href]').forEach((link) => {
       try {
@@ -67,7 +108,7 @@
       diagramSources.set(host, code.textContent);
       code.parentElement.replaceWith(host);
     });
-    if (window.mermaid && diagrams.length) {
+    if (diagrams.length) {
       renderDiagrams(root);
     }
     if (window.renderMathInElement) {
@@ -91,10 +132,19 @@
     const rail = document.querySelector('[data-article-toc-rail]');
     const toggle = document.querySelector('[data-article-toc-toggle]');
     if (!toc || !rail || !toggle) return;
+    if (rail.dataset.tocInitialized === 'true') return;
+    rail.dataset.tocInitialized = 'true';
     const headings = [...article.querySelectorAll('h2, h3')];
-    if (headings.length < 2) return;
     const list = toc.querySelector('ol');
     list.textContent = '';
+    toc.setAttribute('aria-busy', 'false');
+    const toggleLabel = toggle.querySelector('[data-article-toc-toggle-label]');
+    if (!headings.length) {
+      toc.dataset.state = 'empty';
+      toggle.disabled = true;
+      if (toggleLabel) toggleLabel.textContent = '本文暂无目录';
+      return;
+    }
     const items = headings.map((heading, index) => {
       if (!heading.id) heading.id = `section-${index + 1}`;
       const item = document.createElement('li');
@@ -106,8 +156,9 @@
       list.append(item);
       return item;
     });
-    toc.hidden = false;
-    toggle.hidden = false;
+    toc.dataset.state = 'ready';
+    toggle.disabled = false;
+    if (toggleLabel) toggleLabel.textContent = '本文目录';
 
     let activeIndex = -1;
     function setActive(index) {
@@ -192,6 +243,9 @@
     updateActive();
   }
   window.enhanceArticle = enhance;
+  // 目录只依赖服务端已经输出的标题，优先于体积较大的代码高亮、公式和图表脚本生成。
+  const initialArticle = document.querySelector('[data-article-content]');
+  if (initialArticle) buildTableOfContents(initialArticle);
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-article-content]').forEach(enhance);
     const progress = document.querySelector('[data-reading-progress]');

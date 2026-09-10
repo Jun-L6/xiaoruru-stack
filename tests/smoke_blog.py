@@ -17,13 +17,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     blog_env = {
-        "BLOG_COOKIE_SECURE": "true", "SERVER_TOMCAT_THREADS_MAX": "32",
-        "SERVER_TOMCAT_THREADS_MIN_SPARE": "4",
-        "SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE": "4",
+        "BLOG_COOKIE_SECURE": "true", "SERVER_TOMCAT_THREADS_MAX": "16",
+        "SERVER_TOMCAT_THREADS_MIN_SPARE": "2",
+        "SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE": "3",
         "SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE": "1",
-        "JAVA_TOOL_OPTIONS": "-Xms64m -Xmx320m -XX:MaxMetaspaceSize=160m "
-            "-XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=64m -Xss512k "
-            "-XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:+ExitOnOutOfMemoryError",
+        "JAVA_TOOL_OPTIONS": "-Xms48m -Xmx224m -XX:MaxMetaspaceSize=128m "
+            "-XX:ReservedCodeCacheSize=32m -XX:MaxDirectMemorySize=32m -Xss512k "
+            "-XX:+UseSerialGC -XX:ActiveProcessorCount=1 -XX:TieredStopAtLevel=1 "
+            "-XX:+ExitOnOutOfMemoryError",
     }
     with tempfile.TemporaryDirectory(prefix="xiaoruru-blog-smoke-") as temporary:
         with socket.socket() as listener:
@@ -63,6 +64,8 @@ def main():
                     raise RuntimeError("Blog startup timed out")
                 startup = time.monotonic() - started
                 assert request("/")[0] == 200
+                health_status, _, health_body = request("/actuator/health")
+                assert health_status == 200 and '"status":"UP"' in health_body
                 status, headers, body = request("/admin/login")
                 assert status == 200
                 csrf = re.search(r'name="_csrf"[^>]*value="([^"]+)"', body).group(1)
@@ -74,6 +77,10 @@ def main():
                 assert status == 302 and headers["Location"].endswith("/admin"), (status, headers)
                 admin_cookie = headers.get("Set-Cookie", cookie).split(";", 1)[0]
                 assert request("/admin", headers={"Cookie": admin_cookie})[0] == 200
+                for asset in ("/webjars/highlightjs__cdn-assets/11.11.1/highlight.min.js",
+                              "/webjars/katex/0.16.44/dist/katex.min.css",
+                              "/webjars/mermaid/11.17.1/dist/mermaid.min.js"):
+                    assert request(asset)[0] == 200, asset
                 status, _, settings_page = request("/admin/ai-settings", headers={"Cookie": admin_cookie})
                 assert status == 200 and "关闭 AI" in settings_page and "Docker 内网" in settings_page
                 with ThreadPoolExecutor(max_workers=4) as pool:

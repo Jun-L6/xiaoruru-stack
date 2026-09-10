@@ -5,6 +5,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
@@ -67,7 +68,20 @@ class BlogIntegrationTest {
         mvc.perform(get("/posts/jvm-bytecode-test"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("JVM 字节码入门")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("language-java")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("language-java")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-mermaid-src=")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("<script src=\"/webjars/mermaid"))));
+    }
+
+    @Test
+    void versionedWebjarsUseLongLivedBrowserCaching() throws Exception {
+        mvc.perform(get("/webjars/mermaid/11.17.1/dist/mermaid.min.js"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control",
+                        org.hamcrest.Matchers.containsString("max-age=31536000")))
+                .andExpect(header().string("Cache-Control",
+                        org.hamcrest.Matchers.containsString("immutable")));
     }
 
     @Test
@@ -92,7 +106,11 @@ class BlogIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-reading-size=\"large\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-reading-leading=\"compact\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-code-theme=\"paper\"")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-article-toc")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-article-toc")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-state=\"loading\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("正在整理目录")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("data-article-toc hidden"))));
 
         mvc.perform(post("/admin/settings").with(user("admin").roles("ADMIN")).with(csrf())
                         .param("site.article-width", "unsafe-value")
@@ -114,6 +132,8 @@ class BlogIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(view().name("admin/article-edit"))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("AI 自动判断")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("content-form-field")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("content-field-label")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-file-picker")));
         mvc.perform(get("/admin").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(view().name("admin/dashboard"));

@@ -24,10 +24,10 @@
                 </div>
                 <div class="inline-fields">
                     <label>正文格式<select th:field="*{contentType}" data-content-type><option th:each="type : ${contentTypes}" th:value="${type}" th:text="${type}"></option></select></label>
-                    <label>内容形态<select th:field="*{contentForm}" data-content-form th:attr="data-resolved-form=${article == null ? 'LONGFORM' : article.contentForm.name()}"><option value="">AI 自动判断</option><option th:each="form : ${contentForms}" th:value="${form}" th:text="${form.label}"></option></select><small data-content-form-hint>AI 会同时判断内容形态、分类和标签</small></label>
+                    <label class="content-form-field">内容形态<select th:field="*{contentForm}" data-content-form th:attr="data-resolved-form=${article == null ? 'LONGFORM' : article.contentForm.name()}"><option value="">AI 自动判断</option><option th:each="form : ${contentForms}" th:value="${form}" th:text="${form.label}"></option></select><small data-content-form-hint>AI 会同时判断形态、分类和标签</small></label>
                     <label>固定链接<input th:field="*{slug}" maxlength="220" placeholder="留空自动生成"></label>
                 </div>
-                <label for="content">正文</label>
+                <label class="content-field-label" for="content">正文</label>
                 <div class="markdown-tools" data-markdown-tools>
                     <button type="button" data-insert="## 标题">H2</button><button type="button" data-wrap="**">加粗</button><button type="button" data-prefix="> ">引用</button><button type="button" data-block="```java&#10;// code&#10;```">代码</button><button type="button" data-block="| 列一 | 列二 |&#10;| --- | --- |&#10;| 内容 | 内容 |">表格</button><button type="button" data-block="```mermaid&#10;flowchart LR&#10;  A[开始] --> B[结束]&#10;```">流程图</button><button type="button" data-wrap-link>链接</button>
                 </div>
@@ -93,8 +93,7 @@
 <script th:src="@{/webjars/highlightjs__cdn-assets/11.11.1/highlight.min.js}"></script>
 <script th:src="@{/webjars/katex/0.16.44/dist/katex.min.js}"></script>
 <script th:src="@{/webjars/katex/0.16.44/dist/contrib/auto-render.min.js}"></script>
-<script th:src="@{/webjars/mermaid/11.17.1/dist/mermaid.min.js}"></script>
-<script th:src="@{/js/article.js}"></script>
+<script th:src="@{/js/article.js}" th:attr="data-mermaid-src=@{/webjars/mermaid/11.17.1/dist/mermaid.min.js}"></script>
 <script th:src="@{/js/file-picker.js}"></script>
 <script th:src="@{/js/editor.js}"></script>
 </body>

@@ -239,6 +239,23 @@ class AiSettingsIntegrationTest {
         } finally { server.stop(0); }
     }
 
+    @Test void malformedSuccessResponseIsReportedWithoutReflectingItsBody() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            byte[] bytes = "not-json-TOP-SECRET".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
+            try { exchange.getResponseBody().write(bytes); }
+            finally { exchange.close(); }
+        });
+        server.start();
+        try {
+            settings.save(new AiSettingsService.Form("external", "http://127.0.0.1:" + server.getAddress().getPort(),
+                    "key", "model", "/v1/chat/completions", 5, null, false));
+            assertThatThrownBy(() -> gateway.complete(settings.connection(), "system", "user"))
+                    .hasMessageContaining("格式").hasMessageNotContaining("TOP-SECRET");
+        } finally { server.stop(0); }
+    }
+
     private static String completion(String content, String model) {
         return "{\"id\":\"chatcmpl-test\",\"object\":\"chat.completion\",\"created\":1,"
                 + "\"model\":\"" + model + "\",\"choices\":[{\"index\":0,\"message\":{"
