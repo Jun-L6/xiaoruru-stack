@@ -178,6 +178,8 @@ public class Article extends BaseEntity {
     public void setContentHash(String contentHash) { this.contentHash = contentHash; }
     public String getRenderedHtml() { return renderedHtml; }
     public void setRenderedHtml(String renderedHtml) { this.renderedHtml = renderedHtml; }
+    /** 首页的紧凑卡片展示原文而非摘要，并保留诗歌、短句的换行。 */
+    public String getCardPreview() { return ArticleCardPreview.fromRenderedHtml(renderedHtml, content); }
     public int getRenderVersion() { return renderVersion; }
     public void setRenderVersion(int renderVersion) { this.renderVersion = renderVersion; }
     public ArticleStatus getStatus() { return status; }

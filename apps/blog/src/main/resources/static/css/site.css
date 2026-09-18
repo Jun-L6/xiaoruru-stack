@@ -80,23 +80,29 @@ button:hover, .button:hover { border-color: var(--accent); background: var(--acc
 .article-meta a { color: var(--accent); }
 .pin { font-size: 10px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 1px 6px; }
 .form-badge { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; background: var(--paper); color: var(--muted); font-size: 9px; font-weight: 650; letter-spacing: .04em; }
+.article-card.form-essay { padding-block: 34px; }
 .article-card.form-essay h2 { font-family: ui-serif, "Songti SC", "STSong", serif; font-size: clamp(20px, 2.2vw, 24px); font-weight: 600; }
-.article-card.form-note { padding-left: 20px; border-left: 3px solid color-mix(in srgb, var(--accent) 42%, var(--line)); }
+.article-card.form-essay .article-summary { max-width: 780px; font-family: ui-serif, "Songti SC", "STSong", serif; font-size: 14px; line-height: 1.9; }
+.article-card.form-note { margin: 8px 0; padding: 22px 0 22px 20px; border-left: 3px solid color-mix(in srgb, var(--accent) 42%, var(--line)); }
 .article-card.form-note .form-badge { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); background: var(--accent-soft); }
+.article-card.form-note h2 { margin: 7px 0; font-size: clamp(17px, 1.8vw, 20px); }
+.article-card.form-note .article-summary { margin-bottom: 10px; font-size: 12px; -webkit-line-clamp: 1; }
 .article-card.form-moment, .article-card.form-excerpt { margin: 16px 0; padding: 23px 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); box-shadow: var(--shadow); }
 .article-card.form-moment { background: linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 58%, var(--paper)), var(--paper) 72%); }
 .article-card.form-moment h2, .article-card.form-excerpt h2 { margin-bottom: 7px; font-size: 16px; }
-.moment-card-copy { display: block; margin: 12px 0 15px; color: var(--text); font-size: clamp(16px, 2vw, 19px); font-weight: 520; line-height: 1.85; white-space: pre-line; }
+.moment-card-copy { display: -webkit-box; margin: 14px 0 17px; overflow: hidden; color: var(--text); font-size: clamp(16px, 2vw, 19px); font-weight: 520; line-height: 1.85; white-space: pre-line; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
 .moment-card-copy:hover { color: var(--accent); }
 .excerpt-card-copy { position: relative; margin: 14px 0 10px; padding: 3px 8px 3px 28px; border: 0; color: var(--text); font: 17px/1.9 ui-serif, "Songti SC", "STSong", serif; }
 .excerpt-card-copy::before { content: "“"; position: absolute; top: -10px; left: 0; color: var(--accent); font: 38px/1 ui-serif, Georgia, serif; opacity: .65; }
-.excerpt-card-copy a { color: var(--text); }
+.excerpt-card-copy a { display: -webkit-box; overflow: hidden; color: var(--text); white-space: pre-line; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
 .excerpt-card-copy a:hover { color: var(--accent); }
 .article-source { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 15px; margin: 9px 0 15px; color: var(--muted); font-size: 11px; }
 .article-source cite { font-style: normal; }
 .article-source cite::before { content: "— "; }
 .article-source a { font-size: 10px; }
 .article-summary { color: var(--muted); font-size: 13px; line-height: 1.8; margin: 0 0 13px; max-width: 740px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.article-heading > .article-meta { line-height: 1.8; }
+.article-heading > .article-meta + .tag-row { margin-top: 12px; }
 .tag-row, .tag-cloud { display: flex; flex-wrap: wrap; gap: 7px; }
 .tag { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; color: var(--muted); font-size: 10px; background: var(--paper); }
 .tag::before { content: "#"; opacity: .5; font-family: var(--mono); }

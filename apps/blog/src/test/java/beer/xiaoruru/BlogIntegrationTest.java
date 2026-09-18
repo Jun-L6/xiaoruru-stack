@@ -235,6 +235,30 @@ class BlogIntegrationTest {
     }
 
     @Test
+    void compactCardsShowOriginalContentInsteadOfGeneratedOrManualSummary() throws Exception {
+        Long categoryId = categories.findBySlug("snippets-poetry").orElseThrow().getId();
+        String poem = "年岁渐长\n悲喜渐淡\n浮名如梦\n\n安守寻常，自得宽心。";
+        Article moment = articleService.save(new ArticleCommand(null, "", "poem-card-preview-test",
+                "这段概括摘要不应该出现在动态卡片中", ContentType.TEXT, ContentForm.MOMENT, poem, categoryId,
+                "短诗, 心境", "", "", false, false, "", ""));
+        articleService.publish(moment.getId());
+
+        Article excerpt = articleService.save(new ArticleCommand(null, "", "excerpt-card-preview-test",
+                "这段概括摘要不应该出现在摘录卡片中", ContentType.TEXT, ContentForm.EXCERPT,
+                "真正的平静，\n是在心中修篱种菊。", categoryId,
+                "摘录", "某书", "", false, false, "", ""));
+        articleService.publish(excerpt.getId());
+
+        String home = mvc.perform(get("/"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(home)
+                .contains("年岁渐长\n悲喜渐淡\n浮名如梦", "真正的平静，\n是在心中修篱种菊。")
+                .doesNotContain("这段概括摘要不应该出现在动态卡片中",
+                        "这段概括摘要不应该出现在摘录卡片中");
+    }
+
+    @Test
     void excerptSupportsOptionalTitleAndSourceAttribution() throws Exception {
         Long uncategorizedId = categories.findBySlug("uncategorized").orElseThrow().getId();
         Article excerpt = articleService.save(new ArticleCommand(null, "", "excerpt-source-test", "",

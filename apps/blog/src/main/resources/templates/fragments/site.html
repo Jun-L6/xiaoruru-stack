@@ -47,12 +47,12 @@
 
         <th:block th:if="${article.contentForm.name() == 'MOMENT'}">
             <h2 th:if="${article.titleDisplayed}"><a th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${article.title}">动态标题</a></h2>
-            <a class="moment-card-copy" th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${article.summary != null ? article.summary : article.title}">一句记录</a>
+            <a class="moment-card-copy" th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${!#strings.isEmpty(article.cardPreview) ? article.cardPreview : article.title}">一句记录</a>
         </th:block>
 
         <th:block th:if="${article.contentForm.name() == 'EXCERPT'}">
             <h2 th:if="${article.titleDisplayed}"><a th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${article.title}">摘录标题</a></h2>
-            <blockquote class="excerpt-card-copy"><a th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${article.summary != null ? article.summary : article.title}">摘录内容</a></blockquote>
+            <blockquote class="excerpt-card-copy"><a th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${!#strings.isEmpty(article.cardPreview) ? article.cardPreview : article.title}">摘录内容</a></blockquote>
             <p class="article-source" th:if="${article.sourceCitation != null || article.sourceUrl != null}">
                 <cite th:if="${article.sourceCitation != null}" th:text="${article.sourceCitation}">出处</cite>
                 <a th:if="${article.sourceUrl != null}" th:href="${article.sourceUrl}" target="_blank" rel="noopener noreferrer">查看来源 ↗</a>
