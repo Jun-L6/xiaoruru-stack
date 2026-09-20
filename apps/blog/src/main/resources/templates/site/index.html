@@ -29,9 +29,9 @@
         </div>
     </section>
     <nav class="pagination" th:if="${page.totalPages > 1}" aria-label="分页">
-        <a th:if="${page.hasPrevious()}" th:href="@{/(page=${page.number - 1})}">← 上一页</a>
+        <a th:if="${page.hasPrevious()}" th:href="${previousUrl}">← 上一页</a>
         <span th:text="${page.number + 1} + ' / ' + ${page.totalPages}">1 / 1</span>
-        <a th:if="${page.hasNext()}" th:href="@{/(page=${page.number + 1})}">下一页 →</a>
+        <a th:if="${page.hasNext()}" th:href="${nextUrl}">下一页 →</a>
     </nav>
 </main>
 <footer th:replace="~{fragments/site :: footer}"></footer>

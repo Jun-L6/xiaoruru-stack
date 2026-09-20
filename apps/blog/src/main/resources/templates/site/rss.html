@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/site :: head(${pageTitle}, ${description})}"></head>
+<body>
+<header th:replace="~{fragments/site :: header}"></header>
+<main class="page-shell narrow-page rss-page">
+    <header class="page-heading">
+        <p class="eyebrow"><span class="tiny-dot"></span> FOLLOW WITHOUT AN ALGORITHM</p>
+        <h1>用 RSS 安静地订阅<span class="accent-word">。</span></h1>
+        <p>新文章发布后会自动出现在你的 RSS 阅读器里，不需要注册，也不会受到推荐算法打扰。</p>
+    </header>
+
+    <section class="rss-card" aria-labelledby="rss-feed-title">
+        <div class="rss-card-heading">
+            <span class="rss-icon"><svg th:replace="~{fragments/icons :: icon('rss')}"></svg></span>
+            <div><p class="eyebrow">RSS 2.0 FEED</p><h2 id="rss-feed-title">订阅地址</h2></div>
+        </div>
+        <label class="sr-only" for="rss-feed-url">本站 RSS Feed 地址</label>
+        <div class="rss-copy-row">
+            <input id="rss-feed-url" type="url" readonly th:value="${feedUrl}" data-rss-url>
+            <button class="primary" type="button" data-copy-rss>复制地址</button>
+        </div>
+        <p class="rss-copy-status" data-copy-status aria-live="polite">复制后，在阅读器中选择“添加订阅”并粘贴这个地址。</p>
+        <a class="text-link" th:href="${feedUrl}" target="_blank" rel="noopener" type="application/rss+xml">直接查看 RSS Feed <span aria-hidden="true">↗</span></a>
+    </section>
+
+    <section class="rss-steps" aria-labelledby="rss-how-title">
+        <p class="eyebrow">HOW TO SUBSCRIBE</p>
+        <h2 id="rss-how-title">三步完成订阅</h2>
+        <ol>
+            <li><span>01</span><div><strong>打开 RSS 阅读器</strong><p>使用你习惯的阅读器，例如 NetNewsWire、Fluent Reader、Feedly、Inoreader 或 FreshRSS。</p></div></li>
+            <li><span>02</span><div><strong>添加新的订阅源</strong><p>找到“添加订阅”“Add Feed”或类似入口。</p></div></li>
+            <li><span>03</span><div><strong>粘贴本站地址</strong><p>阅读器会识别博客名称，并在以后自动同步新文章。</p></div></li>
+        </ol>
+    </section>
+</main>
+<footer th:replace="~{fragments/site :: footer}"></footer>
+<script defer th:src="@{/js/rss.js}"></script>
+</body>
+</html>

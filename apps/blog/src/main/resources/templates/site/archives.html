@@ -9,7 +9,7 @@
         <h2 th:text="${entry.key}">2026</h2>
         <ol>
             <li th:each="article : ${entry.value}">
-                <time th:text="${#temporals.format(article.publishedAt, 'MM-dd')}">08-31</time>
+                <time th:attr="datetime=${article.publishedAt}" th:text="${#temporals.format(article.publishedAt, 'MM-dd')}">08-31</time>
                 <a th:href="@{/posts/{slug}(slug=${article.slug})}" th:text="${article.title}">标题</a>
             </li>
         </ol>

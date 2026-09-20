@@ -4,7 +4,6 @@ import beer.xiaoruru.article.Article;
 import beer.xiaoruru.article.ArticleKind;
 import beer.xiaoruru.article.ArticleRepository;
 import beer.xiaoruru.article.ArticleStatus;
-import beer.xiaoruru.config.BlogProperties;
 import beer.xiaoruru.render.ContentRenderer;
 import beer.xiaoruru.setting.SiteSettingsService;
 import beer.xiaoruru.taxonomy.Category;
@@ -12,6 +11,8 @@ import beer.xiaoruru.taxonomy.CategoryRepository;
 import beer.xiaoruru.taxonomy.TagRepository;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -47,16 +48,16 @@ public class SiteController {
     private final TagRepository tags;
     private final SiteSettingsService settings;
     private final ContentRenderer renderer;
-    private final BlogProperties properties;
+    private final SeoService seo;
 
     public SiteController(ArticleRepository articles, CategoryRepository categories, TagRepository tags,
-            SiteSettingsService settings, ContentRenderer renderer, BlogProperties properties) {
+            SiteSettingsService settings, ContentRenderer renderer, SeoService seo) {
         this.articles = articles;
         this.categories = categories;
         this.tags = tags;
         this.settings = settings;
         this.renderer = renderer;
-        this.properties = properties;
+        this.seo = seo;
     }
 
     @GetMapping("/")
@@ -65,6 +66,9 @@ public class SiteController {
                 PageRequest.of(safePage(page), PAGE_SIZE, Sort.by(Sort.Order.desc("pinned"), Sort.Order.desc("publishedAt"))));
         model.addAttribute("page", result);
         model.addAttribute("pageTitle", settings.get("site.name", "小茹茹博客"));
+        model.addAttribute("canonical", seo.pagedCanonical("/", result.getNumber()));
+        model.addAttribute("structuredData", seo.homeStructuredData());
+        addPagination(model, result, "/", null);
         return "site/index";
     }
 
@@ -75,7 +79,9 @@ public class SiteController {
         model.addAttribute("article", article);
         model.addAttribute("pageTitle", article.getSeoTitle() == null ? article.getTitle() : article.getSeoTitle());
         model.addAttribute("description", article.getSeoDescription() == null ? article.getSummary() : article.getSeoDescription());
-        model.addAttribute("canonical", normalizedPublicUrl() + "/posts/" + article.getSlug());
+        model.addAttribute("canonical", seo.canonical("/posts/" + article.getSlug()));
+        model.addAttribute("ogType", "article");
+        model.addAttribute("structuredData", seo.articleStructuredData(article));
         model.addAttribute("previousArticle", articles
                 .findFirstByStatusAndKindAndPublishedAtLessThanOrderByPublishedAtDesc(
                         ArticleStatus.PUBLISHED, ArticleKind.POST, article.getPublishedAt()).orElse(null));
@@ -101,6 +107,7 @@ public class SiteController {
         model.addAttribute("categoryGroups", groups);
         model.addAttribute("categoryCounts", counts);
         model.addAttribute("pageTitle", "分类");
+        model.addAttribute("canonical", seo.canonical("/categories"));
         return "site/categories";
     }
 
@@ -114,6 +121,7 @@ public class SiteController {
         model.addAttribute("page", result);
         addPagination(model, result, "/categories/" + category.getSlug(), null);
         model.addAttribute("pageTitle", category.getName());
+        model.addAttribute("canonical", seo.pagedCanonical("/categories/" + category.getSlug(), result.getNumber()));
         return "site/article-list";
     }
 
@@ -125,6 +133,7 @@ public class SiteController {
                 tag -> tag.getId(), tag -> articles.countByTagsIdAndStatusAndKind(
                         tag.getId(), ArticleStatus.PUBLISHED, ArticleKind.POST))));
         model.addAttribute("pageTitle", "标签");
+        model.addAttribute("canonical", seo.canonical("/tags"));
         return "site/tags";
     }
 
@@ -137,6 +146,7 @@ public class SiteController {
         model.addAttribute("page", result);
         addPagination(model, result, "/tags/" + tag.getSlug(), null);
         model.addAttribute("pageTitle", tag.getName());
+        model.addAttribute("canonical", seo.pagedCanonical("/tags/" + tag.getSlug(), result.getNumber()));
         return "site/article-list";
     }
 
@@ -147,6 +157,7 @@ public class SiteController {
                         java.util.LinkedHashMap::new, Collectors.toList()));
         model.addAttribute("archive", archive);
         model.addAttribute("pageTitle", "归档");
+        model.addAttribute("canonical", seo.canonical("/archives"));
         return "site/archives";
     }
 
@@ -173,6 +184,8 @@ public class SiteController {
         model.addAttribute("page", result);
         addPagination(model, result, "/search", query);
         model.addAttribute("pageTitle", "搜索");
+        model.addAttribute("canonical", seo.canonical("/search"));
+        model.addAttribute("robots", "noindex,follow");
         return "site/article-list";
     }
 
@@ -181,7 +194,17 @@ public class SiteController {
         model.addAttribute("aboutHtml", renderer.render(beer.xiaoruru.article.ContentType.MARKDOWN,
                 settings.get("site.about", "# 关于")));
         model.addAttribute("pageTitle", "关于");
+        model.addAttribute("canonical", seo.canonical("/about"));
         return "site/about";
+    }
+
+    @GetMapping("/rss")
+    public String rss(Model model) {
+        model.addAttribute("pageTitle", "RSS 订阅");
+        model.addAttribute("description", "通过 RSS 阅读器订阅本站的新文章");
+        model.addAttribute("canonical", seo.canonical("/rss"));
+        model.addAttribute("feedUrl", seo.canonical("/feed.xml"));
+        return "site/rss";
     }
 
     @GetMapping(value = "/feed.xml", produces = "application/rss+xml;charset=UTF-8")
@@ -189,7 +212,7 @@ public class SiteController {
         List<Article> recent = articles.findByStatusAndKind(ArticleStatus.PUBLISHED, ArticleKind.POST,
                 PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "publishedAt"))).getContent();
         String siteName = escape(settings.get("site.name", "小茹茹博客"));
-        String root = normalizedPublicUrl();
+        String root = seo.rootUrl();
         StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><rss version=\"2.0\"><channel>")
                 .append("<title>").append(siteName).append("</title><link>").append(escape(root)).append("</link>")
                 .append("<description>").append(escape(settings.get("site.subtitle", ""))).append("</description>");
@@ -204,17 +227,45 @@ public class SiteController {
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/rss+xml;charset=UTF-8")).body(xml.toString());
     }
 
+    @GetMapping(value = "/robots.txt", produces = "text/plain;charset=UTF-8")
+    public ResponseEntity<String> robots() {
+        String restrictedPaths = "Disallow: /admin\nDisallow: /search\n";
+        String gptBotPolicy = "allow".equals(settings.get("site.ai-training", "disallow"))
+                ? "Allow: /\n" + restrictedPaths
+                : "Disallow: /\n";
+        String body = "User-agent: OAI-SearchBot\n"
+                + "Allow: /\n" + restrictedPaths + "\n"
+                + "User-agent: ChatGPT-User\n"
+                + "Allow: /\n" + restrictedPaths + "\n"
+                + "User-agent: GPTBot\n"
+                + gptBotPolicy + "\n"
+                + "User-agent: *\n"
+                + "Allow: /\n" + restrictedPaths + "\n"
+                + "Sitemap: " + seo.canonical("/sitemap.xml") + "\n";
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/plain;charset=UTF-8")).body(body);
+    }
+
     @GetMapping(value = "/sitemap.xml", produces = "application/xml;charset=UTF-8")
     public ResponseEntity<String> sitemap() {
-        String root = normalizedPublicUrl();
+        String root = seo.rootUrl();
         StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
                 .append("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">");
-        for (String path : List.of("/", "/archives", "/categories", "/tags", "/about")) {
+        for (String path : List.of("/", "/archives", "/categories", "/tags", "/about", "/rss")) {
             xml.append("<url><loc>").append(escape(root + path)).append("</loc></url>");
         }
+        Map<String, Instant> categoryDates = new LinkedHashMap<>();
+        Map<String, Instant> tagDates = new LinkedHashMap<>();
         for (Article article : articles.findAllPublishedForArchive()) {
             xml.append("<url><loc>").append(escape(root + "/posts/" + article.getSlug())).append("</loc>")
                     .append("<lastmod>").append(article.getUpdatedAt()).append("</lastmod></url>");
+            categoryDates.merge(article.getCategory().getSlug(), article.getUpdatedAt(), SiteController::latest);
+            article.getTags().forEach(tag -> tagDates.merge(tag.getSlug(), article.getUpdatedAt(), SiteController::latest));
+        }
+        for (Map.Entry<String, Instant> entry : categoryDates.entrySet()) {
+            appendSitemapUrl(xml, root + "/categories/" + entry.getKey(), entry.getValue());
+        }
+        for (Map.Entry<String, Instant> entry : tagDates.entrySet()) {
+            appendSitemapUrl(xml, root + "/tags/" + entry.getKey(), entry.getValue());
         }
         xml.append("</urlset>");
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/xml;charset=UTF-8")).body(xml.toString());
@@ -259,13 +310,19 @@ public class SiteController {
     }
 
     private String pageUrl(String path, int page, String query) {
-        var builder = org.springframework.web.util.UriComponentsBuilder.fromPath(path).queryParam("page", page);
+        var builder = org.springframework.web.util.UriComponentsBuilder.fromPath(path);
+        if (page > 0) builder.queryParam("page", page);
         if (query != null && !query.isBlank()) builder.queryParam("q", query);
         return builder.build().encode().toUriString();
     }
 
-    private String normalizedPublicUrl() {
-        return properties.publicUrl().replaceAll("/+$", "");
+    private static Instant latest(Instant left, Instant right) {
+        return left.isAfter(right) ? left : right;
+    }
+
+    private static void appendSitemapUrl(StringBuilder xml, String url, Instant lastModified) {
+        xml.append("<url><loc>").append(escape(url)).append("</loc><lastmod>")
+                .append(lastModified).append("</lastmod></url>");
     }
 
     private static String escape(String value) {

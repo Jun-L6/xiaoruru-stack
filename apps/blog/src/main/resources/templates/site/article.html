@@ -11,10 +11,11 @@
         <header class="article-heading" th:classappend="${article.titleDisplayed ? '' : ' titleless'}">
             <p class="breadcrumbs"><a th:href="@{/}">首页</a> / <a th:href="@{/categories/{slug}(slug=${article.category.slug})}" th:text="${article.category.pathName}">分类</a></p>
             <h1 th:if="${article.titleDisplayed}" th:text="${article.title}">文章标题</h1>
+            <h1 class="sr-only" th:if="${!article.titleDisplayed}" th:text="${article.title}">文章标题</h1>
             <p class="article-meta">
                 <span class="form-badge" th:text="${article.contentForm.label}">长文</span>
-                发布于 <time th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd HH:mm')}">时间</time>
-                <span> · 更新于 <time th:text="${#temporals.format(article.updatedAt, 'yyyy-MM-dd HH:mm')}">时间</time></span>
+                发布于 <time th:attr="datetime=${article.publishedAt}" th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd HH:mm')}">时间</time>
+                <span> · 更新于 <time th:attr="datetime=${article.updatedAt}" th:text="${#temporals.format(article.updatedAt, 'yyyy-MM-dd HH:mm')}">时间</time></span>
             </p>
             <p class="article-lead" th:if="${article.manualSummary && !article.contentForm.compact}" th:text="${article.summary}">摘要</p>
             <div class="tag-row" th:if="${!article.tags.empty}">

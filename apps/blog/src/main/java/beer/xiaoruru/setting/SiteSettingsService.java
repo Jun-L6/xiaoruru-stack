@@ -9,6 +9,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SiteSettingsService {
     private static final Map<String, String> DISPLAY_DEFAULTS = Map.of(
+            "site.author", "",
+            "site.author-url", "",
+            "site.author-bio", "",
+            "site.ai-training", "disallow",
             "site.article-width", "standard",
             "site.article-font-size", "standard",
             "site.article-line-height", "standard",
@@ -19,7 +23,8 @@ public class SiteSettingsService {
             "site.article-font-size", Set.of("small", "standard", "large"),
             "site.article-line-height", Set.of("compact", "standard", "relaxed"),
             "site.code-theme", Set.of("soft", "paper", "dark"),
-            "site.toc-mode", Set.of("floating", "hidden"));
+            "site.toc-mode", Set.of("floating", "hidden"),
+            "site.ai-training", Set.of("allow", "disallow"));
 
     private final SiteSettingRepository repository;
 

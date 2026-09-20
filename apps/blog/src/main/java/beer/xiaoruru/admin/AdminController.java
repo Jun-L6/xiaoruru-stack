@@ -360,9 +360,10 @@ public class AdminController {
     @PostMapping("/admin/settings")
     public String saveSettings(@RequestParam Map<String, String> request, RedirectAttributes redirect) {
         Map<String, String> allowed = new LinkedHashMap<>();
-        for (String key : new String[] {"site.name", "site.subtitle", "site.author", "site.footer", "site.about",
+        for (String key : new String[] {"site.name", "site.subtitle", "site.author", "site.author-url",
+                "site.author-bio", "site.footer", "site.about",
                 "site.article-width", "site.article-font-size", "site.article-line-height", "site.code-theme",
-                "site.toc-mode"}) {
+                "site.toc-mode", "site.ai-training"}) {
             if (request.containsKey(key)) {
                 allowed.put(key, request.get(key));
             }

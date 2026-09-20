@@ -34,6 +34,7 @@ public class GlobalModelAdvice {
         if (exception.getStatusCode().value() == NOT_FOUND.value()) {
             ModelAndView view = new ModelAndView("error/404", NOT_FOUND);
             view.addObject("site", settings.all());
+            view.addObject("robots", "noindex,nofollow");
             return view;
         }
         return new ModelAndView(null, exception.getStatusCode());

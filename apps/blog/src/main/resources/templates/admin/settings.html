@@ -11,7 +11,16 @@
             <h2>站点信息</h2>
             <label>站点名称<input name="site.name" th:value="${settings['site.name']}" maxlength="100" required></label>
             <label>副标题<input name="site.subtitle" th:value="${settings['site.subtitle']}" maxlength="200"></label>
-            <label>作者<input name="site.author" th:value="${settings['site.author']}" maxlength="100"></label>
+            <label>作者 / 笔名<input name="site.author" th:value="${settings['site.author']}" maxlength="100" placeholder="例如：小茹茹"><small>用于文章作者和 GEO 结构化数据；建议填写稳定使用的公开名称。</small></label>
+            <label>作者主页<input name="site.author-url" th:value="${settings['site.author-url']}" type="url" maxlength="500" placeholder="https://xiaoruru.beer/about"><small>可填写个人主页；留空时使用本站“关于”页面。</small></label>
+            <label>作者简介<textarea name="site.author-bio" rows="3" maxlength="500" th:text="${settings['site.author-bio']}" placeholder="简要说明作者身份、关注方向和擅长主题"></textarea></label>
+            <label>OpenAI 模型训练抓取
+                <select name="site.ai-training">
+                    <option value="disallow" th:selected="${settings['site.ai-training'] == 'disallow'}">不允许（仍允许 ChatGPT Search 收录）</option>
+                    <option value="allow" th:selected="${settings['site.ai-training'] == 'allow'}">允许 GPTBot 抓取训练</option>
+                </select>
+                <small>搜索收录由 OAI-SearchBot 独立控制；此设置只控制 GPTBot。</small>
+            </label>
             <label>页脚<input name="site.footer" th:value="${settings['site.footer']}" maxlength="300"></label>
             <label>关于页面（Markdown）<textarea name="site.about" rows="14" th:text="${settings['site.about']}"></textarea></label>
         </section>

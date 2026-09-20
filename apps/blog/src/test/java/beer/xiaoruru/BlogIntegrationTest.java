@@ -25,6 +25,7 @@ import beer.xiaoruru.taxonomy.CategoryRepository;
 import beer.xiaoruru.taxonomy.TagRepository;
 import beer.xiaoruru.taxonomy.TaxonomyService;
 import beer.xiaoruru.media.MediaService;
+import beer.xiaoruru.setting.SiteSettingsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -32,6 +33,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.mock.web.MockMultipartFile;
 import java.util.Base64;
+import java.util.Map;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -43,6 +45,7 @@ class BlogIntegrationTest {
     @Autowired TagRepository tags;
     @Autowired TaxonomyService taxonomy;
     @Autowired MediaService media;
+    @Autowired SiteSettingsService settings;
 
     @Test
     void publicPagesAreAvailableAndAdminIsProtected() throws Exception {
@@ -55,6 +58,28 @@ class BlogIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("生活与见闻")));
         mvc.perform(get("/admin"))
                 .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void rssLandingPageGuidesReadersWhileFeedRemainsMachineReadable() throws Exception {
+        mvc.perform(get("/rss"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("site/rss"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "<link rel=\"canonical\" href=\"http://localhost/rss\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "value=\"http://localhost/feed.xml\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-copy-rss")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("直接查看 RSS Feed")));
+
+        mvc.perform(get("/"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/rss\">RSS 订阅")));
+        mvc.perform(get("/feed.xml"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("application/rss+xml"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<rss version=\"2.0\">")));
+        mvc.perform(get("/sitemap.xml"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("http://localhost/rss")));
     }
 
     @Test
@@ -226,8 +251,10 @@ class BlogIntegrationTest {
         String detail = mvc.perform(get("/posts/titleless-moment-test"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String articleMain = detail.substring(detail.indexOf("<main class=\"article-shell"), detail.indexOf("</main>"));
-        assertThat(articleMain).doesNotContain("<h1", "article-lead");
-        assertThat(org.springframework.util.StringUtils.countOccurrencesOf(articleMain, sentence)).isEqualTo(1);
+        String articleContent = articleMain.substring(articleMain.indexOf("<div class=\"article-content"),
+                articleMain.indexOf("</div>", articleMain.indexOf("<div class=\"article-content")));
+        assertThat(articleMain).contains("<h1 class=\"sr-only\"").doesNotContain("article-lead");
+        assertThat(org.springframework.util.StringUtils.countOccurrencesOf(articleContent, sentence)).isEqualTo(1);
 
         String home = mvc.perform(get("/")).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
@@ -271,9 +298,74 @@ class BlogIntegrationTest {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String articleMain = detail.substring(detail.indexOf("<main class=\"article-shell"), detail.indexOf("</main>"));
         assertThat(articleMain)
-                .doesNotContain("<h1")
+                .contains("<h1 class=\"sr-only\"")
                 .contains("article-detail-source", "杜甫《奉赠韦左丞丈二十二韵》",
                         "href=\"https://example.com/source\"");
+    }
+
+    @Test
+    void publicPagesExposeGeoMetadataAndChineseLocale() throws Exception {
+        Long categoryId = categories.findBySlug("software-development").orElseThrow().getId();
+        Article article = articleService.save(new ArticleCommand(null, "GEO 元数据验证", "geo-metadata-test", "检索摘要",
+                ContentType.MARKDOWN, ContentForm.LONGFORM, "# GEO\n\n用于验证结构化数据。", categoryId,
+                "GeoMetadata", "", "", false, true, "", ""));
+        articleService.publish(article.getId());
+        Article published = articles.findDetailedById(article.getId()).orElseThrow();
+        String tagSlug = published.getTags().iterator().next().getSlug();
+
+        mvc.perform(get("/"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Language", "zh-CN"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "<link rel=\"canonical\" href=\"http://localhost/\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"@type\":\"WebSite\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"@type\":\"Blog\"")));
+
+        mvc.perform(get("/posts/geo-metadata-test"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "<meta property=\"og:type\" content=\"article\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("article:published_time")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("article:modified_time")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("article:section")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("article:tag")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"@type\":\"BlogPosting\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"@type\":\"BreadcrumbList\"")));
+
+        mvc.perform(get("/search").param("q", "GEO"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "<meta name=\"robots\" content=\"noindex,follow\"")));
+
+        mvc.perform(get("/sitemap.xml"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "http://localhost/posts/geo-metadata-test")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "http://localhost/categories/software-development")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "http://localhost/tags/" + tagSlug)));
+    }
+
+    @Test
+    void robotsAllowsChatGptSearchAndSeparatelyControlsTraining() throws Exception {
+        try {
+            settings.update(Map.of("site.ai-training", "disallow"));
+            mvc.perform(get("/robots.txt"))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentTypeCompatibleWith("text/plain"))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("User-agent: OAI-SearchBot\nAllow: /")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("User-agent: GPTBot\nDisallow: /")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                            "Sitemap: http://localhost/sitemap.xml")));
+
+            settings.update(Map.of("site.ai-training", "allow"));
+            mvc.perform(get("/robots.txt"))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("User-agent: GPTBot\nAllow: /")));
+        } finally {
+            settings.update(Map.of("site.ai-training", "disallow"));
+        }
     }
 
     @Test
