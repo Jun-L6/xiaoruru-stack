@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -610,6 +611,50 @@ class Runtime:
         if self.cpa_installed():
             self.validate_cpa()
 
+    def prepare_cpa_management_key(self):
+        """Create a durable first-install key that the official installer must not delete."""
+        key_dir = safe_path(self.cpa_dir / "secrets")
+        key_path = safe_path(key_dir / "cpa-management-key")
+        marker_path = safe_path(key_dir / ".cpa-management-key.external")
+        config_path = safe_path(self.cpa_dir / "cliproxyapi/config.yaml")
+        compose_path = safe_path(self.cpa_dir / "compose.yaml")
+
+        # Never mint a new key into an existing or partially installed CPA stack:
+        # it would not match the secret already hashed into CPA or stored by CPAMP.
+        if not key_path.exists() and (config_path.exists() or compose_path.exists()):
+            return False
+
+        directory(key_dir, 0o700)
+        os.chmod(key_dir, 0o700)
+        if key_path.exists():
+            if not key_path.is_file():
+                raise StackError("CPA Management Key 必须是普通文件，不能是目录或链接。")
+            value = key_path.read_text(encoding="utf-8").strip()
+            if not re.fullmatch(r"[A-Za-z0-9_.@+-]{1,4096}", value):
+                raise StackError("CPA Management Key 文件为空或格式异常；未修改现有密钥。")
+            os.chmod(key_path, 0o600)
+        else:
+            value = "cpa_" + secrets.token_hex(16)
+            try:
+                descriptor = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            except FileExistsError:
+                # Another bootstrap process created it; validate it on the next call.
+                return self.prepare_cpa_management_key()
+            with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                output.write(value + "\n")
+                output.flush()
+                os.fsync(output.fileno())
+
+        if marker_path.exists():
+            if not marker_path.is_file():
+                raise StackError("CPA Management Key ownership marker 必须是普通文件。")
+            marker = marker_path.read_text(encoding="utf-8").strip()
+            if marker != "EXTERNAL=1":
+                raise StackError("CPA Management Key ownership marker 内容异常；未继续安装。")
+        else:
+            write(marker_path, "EXTERNAL=1\n", 0o600, overwrite=False)
+        return True
+
     def validate_cpa(self):
         result = self.compose("config", "--format", "json", cpa=True, capture=True)
         merged = json.loads(result.stdout)
@@ -637,6 +682,10 @@ class Runtime:
         if not sys.stdin.isatty():
             raise StackError("CPA 官方安装器需要交互终端。请直接运行 ./bootstrap.sh start cpa。")
         self.cpa_override()
+        key_prepared = self.prepare_cpa_management_key()
+        if key_prepared:
+            print("CPA Management Key 已安全保存在 data/cpa/secrets/cpa-management-key；官方安装器不会删除此文件。")
+            print("可在完成安装后运行 ./bootstrap.sh credentials 查看。")
         print("进入 CPA 官方安装器：保留当前安装目录，选择完整 Docker 安装。")
         print("升级、修复或退出由你在官方菜单中决定；不配置上游账号或模型。")
         installer = self.store.system / "tools/install-cpamp.sh"

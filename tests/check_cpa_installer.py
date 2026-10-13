@@ -11,6 +11,8 @@ from manager.storage import write
 def main():
     with fixture() as (store, runtime):
         runtime.cpa_override()
+        runtime.prepare_cpa_management_key()
+        management_key = (runtime.cpa_dir / "secrets/cpa-management-key").read_text().strip()
         script = store.system / "install-cpamp.sh"
         with urllib.request.urlopen(CPA_INSTALLER, timeout=45) as response:
             content = response.read().decode()
@@ -28,6 +30,9 @@ def main():
         assert runtime.cpa_installed(), "Official installer did not generate its Compose and env"
         runtime.validate_cpa()
         assert (runtime.cpa_dir / "secrets").is_dir()
+        assert (runtime.cpa_dir / "secrets/cpa-management-key").read_text().strip() == management_key
+        assert management_key in (runtime.cpa_dir / "cliproxyapi/config.yaml").read_text()
+        assert (runtime.cpa_dir / "secrets/.cpa-management-key.external").is_file()
         print("Official installer generated full-stack configuration with the override present; merged ports, networks and bind mounts passed. Execution was disabled.")
 
 

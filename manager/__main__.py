@@ -161,6 +161,8 @@ def deployment_credentials(store):
     def cpa_secret(name):
         secret_path = safe_path(store.data / "cpa/secrets" / name)
         if not secret_path.is_file():
+            if name == "cpa-management-key" and (store.data / "cpa/compose.yaml").is_file():
+                return "未保存明文密钥（安装器可能已清理）；请轮换 CPA Management Key"
             return "尚未生成（请先完成 CPA 官方安装器）"
         value = secret_path.read_text().strip()
         if not re.fullmatch(r"[A-Za-z0-9_.@+-]{1,4096}", value):

@@ -158,6 +158,26 @@ class StorageTest(unittest.TestCase):
 
 
 class LifecycleTest(unittest.TestCase):
+    def test_first_cpa_key_is_persistent_and_repeatable(self):
+        with fixture() as (store, runtime):
+            self.assertTrue(runtime.prepare_cpa_management_key())
+            key_path = store.data / "cpa/secrets/cpa-management-key"
+            marker_path = store.data / "cpa/secrets/.cpa-management-key.external"
+            first = key_path.read_text().strip()
+            self.assertRegex(first, r"^cpa_[0-9a-f]{32}$")
+            self.assertEqual("EXTERNAL=1\n", marker_path.read_text())
+            self.assertEqual(0o600, key_path.stat().st_mode & 0o777)
+            self.assertEqual(0o700, key_path.parent.stat().st_mode & 0o777)
+            self.assertTrue(runtime.prepare_cpa_management_key())
+            self.assertEqual(first, key_path.read_text().strip())
+
+    def test_cpa_key_is_not_regenerated_for_partial_existing_install(self):
+        with fixture() as (store, runtime):
+            config = store.data / "cpa/cliproxyapi/config.yaml"
+            write(config, "remote-management:\n  secret-key: '$2a$existing-hash'\n")
+            self.assertFalse(runtime.prepare_cpa_management_key())
+            self.assertFalse((store.data / "cpa/secrets/cpa-management-key").exists())
+
     def test_ready_host_environment_does_not_run_apt(self):
         with fixture() as (_, runtime):
             def command(args, **kwargs):
